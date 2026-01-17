@@ -1,0 +1,2729 @@
+Introduction
+Solana Signing Infrastructure
+
+Kora is your Solana signing infrastructure. Enable gasless transactions where users pay fees in any token—USDC, BONK, or your app's native token—or handle any transaction signing that requires a trusted signer.
+
+Why Kora?
+Better UX: Users never need SOL
+Revenue Control: Collect fees in USDC, your token, or anything else
+Production Ready: Secure validation, rate limiting, monitoring built-in
+Easy Integration: JSON-RPC API + TypeScript SDK
+Flexible Deployment: Railway, Docker, or any cloud platform
+Architecture
+Language: Rust with TypeScript SDK
+Protocol: JSON-RPC 2.0
+Signers: Solana Private Key, Turnkey, Privy
+Authentication: API Key, HMAC, or none
+Deployment: Flexible deployment options (Docker, Railway, etc.)
+Features
+Configurable validation rules and allowlists
+Full Token-2022 support with extension filtering
+Redis caching for improved performance
+Rate limiting and spend protection
+Secure key management (Turnkey, Privy, Vault)
+HMAC and API key authentication
+Prometheus metrics and monitoring
+Enhanced fee payer protection policies
+Quick Start
+Install Kora:
+
+
+cargo install kora-cli
+Basic usage:
+
+
+kora rpc [OPTIONS] # --help for full list of options
+→ Quick Start Guide - Get Kora running locally in minutes
+
+→ Node Operator Guide - Run a paymaster
+
+TypeScript SDK
+Kora provides a simple JSON-RPC interface:
+
+
+// Initialize Kora client
+import { KoraClient } from '@solana/kora';
+const kora = new KoraClient({ rpcUrl: 'http://localhost:8080' });
+// Sign transaction as paymaster
+const signed = await kora.signTransaction({ transaction });
+→ API Reference - JSON-RPC methods and TypeScript SDK
+
+Local Development
+Prerequisites
+Rust 1.86+ or
+Solana CLI 2.2+
+Node.js 20+ and pnpm (for SDK)
+Installation
+
+git clone https://github.com/solana-foundation/kora.git
+cd kora
+just install
+Build
+
+just build
+Running the Server
+Basic usage:
+
+
+kora rpc [OPTIONS]
+Or for running with a test configuration, run:
+
+
+just run
+Local Testing
+And run all tests:
+
+
+just test-all
+Community & Support
+Questions? Ask on Solana Stack Exchange (use the kora tag)
+Issues? Report on GitHub Issues
+Other Resources
+Kora CLI Crates.io - Rust crate for running a Kora node
+@solana/kora NPM Package - TypeScript SDK for interacting with a Kora node
+Source
+GitHub Repository
+Built and maintained by the Solana Foundation.
+
+Licensed under MIT. See LICENSE for details.
+
+Installation
+Install the Kora CLI, TypeScript SDK, and set up your development environment
+
+Installation
+Get started with Kora by installing the CLI tool for operating a Kora node or the TypeScript SDK for client applications interacting with a Kora node.
+
+System Requirements
+For CLI (Server)
+Rust: Version 1.86 or higher
+For TypeScript SDK (Client)
+Node.js: Version LTS or higher
+TypeScript: latest version
+Optional Dependencies
+Solana CLI: Helpful for key generation and testing
+Docker: For containerized deployments
+Kora CLI
+The Kora CLI is the primary way to run and manage Kora nodes. Choose your preferred installation method:
+
+Option 1: Install from Cargo
+Install directly from crates.io using Cargo:
+
+
+cargo install kora-cli
+Option 2: Build from Source
+Clone and build the latest version from source:
+
+
+git clone https://github.com/solana-foundation/kora.git
+cd kora
+just install
+This will build and install the kora binary to your local Cargo bin directory.
+
+Verify Installation
+Verify the Kora CLI is installed correctly:
+
+
+kora --version
+TypeScript SDK
+Install the Kora TypeScript SDK for client applications:
+
+
+pnpm add @solana/kora
+Peer Dependencies
+Kora requires certain Solana dependencies:
+
+
+pnpm add @solana/kit @solana-program/token
+Verify SDK Installation
+Verify your SDK installation with a simple connection test:
+
+
+import { KoraClient } from '@solana/kora';
+async function testConnection() {
+  const client = new KoraClient('http://localhost:8080'); // Replace with your Kora server URL
+  
+  try {
+    const config = await client.getConfig();
+    console.log('✅ Successfully connected to Kora server');
+  } catch (error) {
+    console.error('❌ Connection failed:', error.message);
+  }
+}
+testConnection();
+Troubleshooting
+CLI Issues
+"kora: command not found": Ensure ~/.cargo/bin is in your PATH:
+
+
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+Build fails: Update Rust to the latest stable version:
+
+
+rustup update stable
+SDK Issues
+Peer dependency warnings: Install the required Solana dependencies listed above.
+
+TypeScript errors: Ensure your TypeScript version is 4.5+ and install type definitions:
+
+
+pnpm add -D @types/node
+Connection refused: Ensure your Kora server is running and accessible at the specified endpoint.
+
+Kora Operators Documentation
+Getting started as a Kora node operator
+
+What is a Kora Node Operator?
+As a Kora node operator, you run a paymaster service that sponsors Solana transaction fees for your users. Your node accepts SPL token payments and uses your SOL to pay actual network fees, enabling gasless transactions for your application.
+
+Why Run a Kora Node?
+Better UX: Your users transact without needing SOL (streamlined onboarding, better retention, etc.)
+Revenue Stream: Collect fees in tokens your business prefers (USDC, BONK, etc.)
+Contents
+Quick Start
+Core Concepts
+Kora CLI
+Configuration
+Deployment
+Need Help?
+Quick Start
+Want to try locally first? Spin up a local Kora node in a few minutes: → Local Quick Start Guide
+
+Core Concepts
+As a Kora node operator, you're responsible for running a secure paymaster service that enables gasless transactions for your users. Your node has four key responsibilities:
+
+1. Validate Transactions
+Configure your node to accept only transactions that meet your business requirements via kora.toml:
+
+Token allowlists: Define which SPL tokens you accept as payment (supports both SPL and Token-2022)
+Program allowlists: Whitelist which Solana programs users can interact with
+Transaction limits: Set maximum fees you're willing to pay and signature limits
+Account blocklists: Prevent interactions with problematic addresses
+Pricing oracles: Configure Jupiter or mock pricing for fee calculations
+Payment tokens: Specify which type of tokens you will accept as payment
+Feepayer policies: Control what operations your feepayer can perform (transfers, burns, approvals, etc.)
+Token-2022 extensions: Block specific Token-2022 extensions for enhanced security
+Caching: Enable Redis caching to improve performance by reducing RPC calls
+Usage limits: Set per-wallet transaction limits to prevent abuse, ensure fair usage, or reward users with subsidized transactions up to a certain limit
+→ Complete Kora.toml Configuration Reference → Sample kora.toml
+
+2. Sign Transactions
+Your node needs Solana keypair(s) to sign transactions as the fee payer. For production deployments, Kora supports multi-signer configurations for improved reliability and account-lock distribution. Consider implementing key rotation, access controls, backups, and other strategies for signer security. Signing options available:
+
+Local Private Key: Store private key directly in server environment (as base58, .json file, or u8 array)
+Turnkey: Private key management made simple. Create wallets, sign transactions, and automate onchain actions.
+Privy: Easy crypto infrastructure. Securely spin up whitelabel wallets and sign transactions.
+HashiCorp Vault: Manage Secrets & Protect Sensitive Data
+→ Complete Signers Configuration Guide
+
+3. Pay Transaction Fees
+Maintain sufficient SOL to cover network fees for your expected transaction volume:
+
+Balance monitoring: Track SOL balance and set up low-balance alerts (Kora provides built-in Prometheus metrics - see Monitoring)
+Automation: Implement automatic SOL top-up procedures for production environments
+Capacity planning: Plan for expected use case, user volume, etc.
+It is important that you understand how Kora estimates fees and how to configure your node to maximize your revenue. See the Fee Estimation Guide for more details.
+
+4. Monitor Operations
+Continuously track your node's security, performance, and business metrics:
+
+Security monitoring: Unusual patterns, failed validations, and rate limit breaches
+Operational alerts: System health, balance warnings, and security events
+Financial tracking: SOL costs vs. token revenue, profitability analysis
+Signer balance monitoring: Track signer balance and set up low-balance alerts
+Kora provides an optional /metrics endpoint that provides real-time performance data in Prometheus format.
+
+→ Kora Monitoring Reference Guide
+
+5. Optimize Performance (Optional)
+For high-traffic deployments, enable Redis caching to reduce RPC calls and improve response times:
+
+Account caching: Cache Solana account data with configurable time to live (TTL)
+Automatic fallback: Gracefully falls back to direct RPC calls if Redis is unavailable
+Cache management: Automatic expiration and force-refresh capabilities for critical operations
+Kora CLI
+The kora-cli crate is a production-ready Rust binary that provides everything you need to run a Kora paymaster node. It's distributed as a standalone executable that you can install globally or deploy in containers.
+
+Installation Options
+Global Installation (recommended for development)
+
+
+cargo install kora-cli
+Or build from source (recommended for contributing)
+
+
+git clone https://github.com/solana-foundation/kora.git
+cd kora
+just install
+Basic Usage
+The Kora RPC server exposes a JSON-RPC endpoint (default: http://localhost:8080). Launch it with the kora rpc command:
+
+
+# Run with specified kora.toml and signers.toml
+kora --config path/to/kora.toml rpc start --signers-config path/to/signers.toml
+# Help
+kora rpc --help
+For more information on the using the Kora CLI, see the CLI Guide.
+
+Applications can access the Kora RPC Server via the Kora TS SDK
+
+Configuration
+Every Kora RPC node must be configured with at least:
+
+a Solana RPC endpoint (specified via the --rpc-url flag or RPC_URL environment variable) [default: http://127.0.0.1:8899]
+Solana signer(s) configuration (specified via the --signers-config signers.toml flag)
+a config file, kora.toml (specified via the --config path/to/kora.toml flag)
+kora.toml
+
+Before deploying, you'll need to create and configure a kora.toml to specify:
+
+Rate limiting and authentication
+Payment destination address
+RPC method availability
+Transaction validation rules
+Security policies (whitelist or blacklist of SPL tokens, programs, accounts, token extensions, etc.)
+Fee pricing models
+Enhanced fee payer policies (protect against unwanted signer behavior)
+Metrics collection
+Redis caching configuration (optional)
+signers.toml
+
+You will also need to create a signers.toml file to specify:
+
+Signer(s) for your node
+Signer selection strategy
+Each signer's configuration and applicable keys
+Deployment
+Local Deployment
+Start up and test a local Kora Server in minutes: Quick Start Guide
+
+Docker
+Use the sample Dockerfile to deploy on any container platform. The docker-compose.yml file includes Redis for caching support:
+
+→ Sample Dockerfile → Docker Compose with Redis
+
+Platform-Specific Guides
+Railway Deployment
+More integration guides coming soon
+
+Need Help?
+Solana Stack Exchange - Ask questions/share learnings (make sure to use the kora tag)
+GitHub Issues - Report bugs or get help
+Run kora rpc --help to see all available flags and configuration options
+On this page
+What is a Kora Node Operator?
+Why Run a Kora Node?
+Contents
+Quick Start
+Core Concepts
+1. Validate Transactions
+2. Sign Transactions
+3. Pay Transaction Fees
+4. Monitor Operations
+5. Optimize Performance (Optional)
+Kora CLI
+Installation Options
+Basic Usage
+Configuration
+Deployment
+Local Deployment
+Docker
+Platform-Specific Guides
+Need Help?
+
+Configuration
+Complete kora.toml configuration reference
+
+Your Kora node will be signing transactions for your users, so it is important to configure it to only sign transactions that meet your business requirements. Kora gives you a lot of flexibility in how you configure your node, but it is important to understand the implications of your configuration. kora.toml is the control center for your Kora configuration. This document provides a comprehensive reference for configuring your Kora paymaster node through the kora.toml configuration file.
+
+Overview
+The kora.toml file controls all aspects of your Kora node's behavior including:
+
+Rate limiting and authentication
+RPC method availability
+Transaction validation rules
+Fee pricing models
+Security policies
+RPC method availability
+Fee pricing models
+Payment address configuration
+Performance monitoring
+Your configuration file should be placed in your deployment directory or specified via the --config flag when starting the server.
+
+Configuration Sections
+The kora.toml file is organized into sections, each with its own set of options. This guide walks through each section and explains the options available:
+
+Kora Core Policies - Core server settings
+Kora Authentication - Authentication settings
+Kora Caching - Redis caching for RPC calls
+Kora Usage Limits - Per-wallet transaction limiting
+Kora Enabled Methods - Kora RPC methods to enable
+Validation Policies - Transaction validation and security
+Token-2022 Extension Blocking - Block risky Token-2022 extensions
+Fee Payer Policy - Restrictions on fee payer wallet
+Price Configuration - Transaction fee pricing models
+Performance Monitoring - Metrics collection and monitoring
+Complete Example - Full production-ready configuration
+Sample kora.toml file sections:
+
+
+[kora]
+# Core server settings
+[kora.auth]
+# Authentication settings
+[kora.cache]
+# Redis caching configuration
+[kora.usage_limit]
+# Per-wallet transaction limiting
+[kora.enabled_methods]
+# Kora RPC methods to enable
+[validation]
+# Transaction validation rules
+[validation.token2022]
+# Token-2022 extension blocking
+[validation.fee_payer_policy]
+# Restrictions on fee payer wallet
+[validation.price]
+# Transaction fee pricing models
+[metrics]
+# Performance monitoring
+Kora Core Policies
+The [kora] section configures core server behavior:
+
+
+[kora]
+rate_limit = 100
+payment_address = "YourPaymentAddressPubkey11111111111111111111"  # Optional
+Option	Description	Required	Type
+rate_limit	Global rate limit (requests per second) across all clients	✅	number
+payment_address	Optional payment address to receive payment tokens (defaults to signer address(es) if not specified)	❌	b58-encoded string
+Kora Authentication
+The [kora.auth] section configures authentication for the Kora server:
+
+
+[kora.auth]
+api_key = "kora_live_sk_1234567890abcdef"
+hmac_secret = "kora_hmac_your-strong-hmac-secret-key-here"
+max_timestamp_age = 300
+Option	Description	Required	Type
+api_key	API key for simple authentication	❌	string
+hmac_secret	HMAC secret for signature-based authentication (min 32 chars)	❌	string
+max_timestamp_age	Maximum age of an HMAC timestamp in seconds	❌ (default: 300)	number
+Note: api_key and hmac_secret set a global authentication policy for all clients. For detailed authentication setup, see Authentication Guide.
+
+Kora Caching (optional)
+The [kora.cache] section configures Redis-based caching for Solana RPC calls. This can significantly improve performance by reducing redundant account data fetches:
+
+
+[kora.cache]
+enabled = true                      # Enable/disable caching
+url = "redis://localhost:6379"      # Redis connection URL
+default_ttl = 300                   # Default TTL in seconds (5 minutes)
+account_ttl = 60                    # Account data TTL in seconds (1 minute)
+Option	Description	Required	Type
+enabled	Enable Redis caching for RPC calls	❌ (default: false)	boolean
+url	Redis connection URL (required when enabled)	✅	string
+default_ttl	Default TTL for cached entries in seconds	❌ (default: 300)	number
+account_ttl	TTL for account data cache in seconds	❌ (default: 60)	number
+Note: When caching is enabled, a Redis instance must be available at the specified URL. The cache gracefully falls back to direct RPC calls if Redis is unavailable.
+
+Kora Usage Limits (optional)
+The [kora.usage_limit] section configures per-wallet transaction limiting to prevent abuse and ensure fair usage across your users. This could also be used to create rewards programs to subsidize users' transaction fees up to a certain limit.
+
+Important: Currently, the only form of usage limiting supported by Kora is a permanent limit. Once a wallet reaches its transaction limit, it cannot be reset and the user will no longer be able to submit any more transactions using that same wallet. This limit persists until manually cleared from Redis or the Redis data is reset.
+
+Note: This feature requires Redis when enabled across multiple Kora instances:
+
+
+[kora.usage_limit]
+enabled = true                      # Enable/disable usage limiting
+cache_url = "redis://localhost:6379" # Redis URL for shared state (required when enabled)
+max_transactions = 100              # Max transactions per wallet (0 = unlimited)
+fallback_if_unavailable = true      # Continue if Redis is unavailable
+Option	Description	Required	Type
+enabled	Enable per-wallet transaction limiting	❌ (default: false)	boolean
+cache_url	Redis connection URL for shared usage tracking	❌	string
+max_transactions	Maximum transactions per wallet (0 = unlimited)	❌ (default: 100)	number
+fallback_if_unavailable	Allow transactions if Redis is unavailable	❌ (default: true)	boolean
+Note: Usage limits are tracked per wallet address with automatic TTL-based expiration. When fallback_if_unavailable is true, the system allows transactions to proceed if Redis is temporarily unavailable, preventing service disruption. Setting max_transactions to 0 will allow unlimited transactions.
+
+Kora Enabled Methods (optional)
+The [kora.enabled_methods] section controls which RPC methods are enabled. This section is optional and by default, all methods are enabled. Each method can be enabled or disabled by setting the value to true or false:
+
+
+[kora.enabled_methods]
+liveness = true
+estimate_transaction_fee = true
+get_supported_tokens = true
+sign_transaction = false
+sign_and_send_transaction = false
+transfer_transaction = false
+get_blockhash = true
+get_config = true
+get_payer_signer = true
+Option	Method Description	Required	Type
+liveness	Health check endpoint	✅	boolean
+estimate_transaction_fee	Estimate the fee for a transaction	✅	boolean
+get_supported_tokens	List accepted tokens	✅	boolean
+sign_transaction	Sign a transaction without sending it to the network	✅	boolean
+sign_and_send_transaction	Sign a transaction and send it to the network	✅	boolean
+transfer_transaction	Handle token transfers	✅	boolean
+get_blockhash	Get a recent blockhash	✅	boolean
+get_config	Return the Kora server config	✅	boolean
+Note: if this section is included in your kora.toml file, all methods must explicitly be set to true or false.
+
+Validation Policies
+The [validation] section defines Solana-related security rules and transaction limits:
+
+
+[validation]
+max_allowed_lamports = 1000000  # 0.001 SOL
+max_signatures = 10
+price_source = "Jupiter"
+allowed_programs = [
+    "11111111111111111111111111111111",              # System Program (required for SOL transfers)
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",   # SPL Token Program
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",   # Token-2022 Program
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",  # Associated Token Program
+    "AddressLookupTab1e1111111111111111111111111",   # Address Lookup Table Program
+    "ComputeBudget11111111111111111111111111111111", # Compute Budget Program
+]
+allowed_tokens = [
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC (mainnet)
+    # additional tokens here
+]
+allowed_spl_paid_tokens = [
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC (mainnet)
+    # additional tokens here
+]
+disallowed_accounts = [
+    # "BadActorPubkey11111111111111111111111111111",
+]
+Option	Description	Required	Type
+max_allowed_lamports	Setting a maximum number of lamports per transaction limits the Kora node's exposure to a single transaction.	✅	number
+max_signatures	Solana base fees are a function of the number of signatures in a transaction, so setting a maximum number of signatures per transaction is a good way to prevent users from spending too much SOL on a single transaction.	✅	number
+price_source	Oracle for token price data	✅	"Jupiter" or "Mock"
+allowed_programs	Solana programs that transactions can interact with	✅	Array of b58-encoded string
+allowed_tokens	Token mints that can be used in transactions	✅	Array of b58-encoded string
+allowed_spl_paid_tokens	SPL tokens accepted as payment for transaction fees	✅	Array of b58-encoded string
+disallowed_accounts	Accounts that are explicitly blocked from transactions	✅	Array of b58-encoded string
+Note: Empty arrays are allowed, but you will need to specify at least one whitelisted allowed_programs, allowed_tokens, allowed_spl_paid_tokens for the Kora node to be able to process transactions. You need to specify the System Program or Token Program for the Kora node to be able to process transfers. To enable common instruction types (e.g., Compute Budget, Address Lookup Table), you need to specify the Compute Budget Program or Address Lookup Table Program, etc.
+
+Token-2022 Extension Blocking
+The [validation.token2022] section allows you to block specific Token-2022 extensions for enhanced security. All extensions are enabled by default. You can block specific extensions by adding them to the blocked_mint_extensions or blocked_account_extensions arrays:
+
+
+[validation.token2022]
+blocked_mint_extensions = [
+    "transfer_hook",           # Block tokens with transfer hooks
+    "pausable",                # Block pausable tokens
+    "permanent_delegate",      # Block tokens with permanent delegates
+]
+blocked_account_extensions = [
+    "cpi_guard",              # Block accounts with CPI guard
+    "memo_transfer",          # Block accounts requiring memos
+]
+Available Mint Extensions
+Extension Name	Description
+confidential_transfer_mint	Confidential transfer configuration for the mint
+confidential_mint_burn	Confidential mint and burn configuration
+transfer_fee_config	Transfer fee configuration
+mint_close_authority	Authority allowed to close the mint
+interest_bearing_config	Interest-bearing token configuration
+non_transferable	Makes tokens non-transferable
+permanent_delegate	Permanent delegate for the mint
+transfer_hook	Custom transfer hook program
+pausable	Pausable token configuration
+Available Account Extensions
+Extension Name	Description
+confidential_transfer_account	Confidential transfer state for the account
+non_transferable_account	Non-transferable token account
+transfer_hook_account	Transfer hook state for the account
+pausable_account	Pausable token account state
+memo_transfer	Requires memo for transfers
+cpi_guard	Prevents certain CPI calls
+immutable_owner	Account owner cannot be changed
+default_account_state	Default state for new accounts
+Note: Blocking extensions helps prevent interactions with tokens that have complex or potentially risky behaviors. For example, blocking transfer_hook prevents signing transactions for tokens with custom transfer logic.
+
+Security Considerations
+PermanentDelegate Extension - Tokens with this extension allow the delegate to transfer/burn tokens at any time without owner approval. This creates significant risks for the Kora node operator as payment funds can be seized after payment.
+
+Consider adding "permanent_delegate" to blocked_mint_extensions in [validation.token2022] unless explicitly needed for your use case.
+Avoid using payment tokens with the permanent_delegate extension.
+Fee Payer Policy
+The [validation.fee_payer_policy] section provides granular control over what actions your Kora node's fee payer wallet can perform. The policy is organized by program type (System, SPL Token, Token-2022) and covers all different instruction types. This prevents unexpected behavior from users' transactions utilizing your Kora node as a signer.
+
+For example, if spl_token.allow_transfer is set to false, the Kora node will not sign transactions that include an SPL token transfer where the Kora node's fee payer is the transfer authority.
+
+
+[validation.fee_payer_policy.system]
+allow_transfer = false           # System Transfer/TransferWithSeed
+allow_assign = false             # System Assign/AssignWithSeed
+allow_create_account = false     # System CreateAccount/CreateAccountWithSeed
+allow_allocate = false           # System Allocate/AllocateWithSeed
+[validation.fee_payer_policy.system.nonce]
+allow_initialize = false         # InitializeNonceAccount
+allow_advance = false            # AdvanceNonceAccount
+allow_authorize = false          # AuthorizeNonceAccount
+allow_withdraw = false           # WithdrawNonceAccount
+[validation.fee_payer_policy.spl_token]
+allow_transfer = false           # Transfer/TransferChecked
+allow_burn = false               # Burn/BurnChecked
+allow_close_account = false      # CloseAccount
+allow_approve = false            # Approve/ApproveChecked
+allow_revoke = false             # Revoke
+allow_set_authority = false      # SetAuthority
+allow_mint_to = false            # MintTo/MintToChecked
+allow_initialize_mint = false    # InitializeMint/InitializeMint2
+allow_initialize_account = false # InitializeAccount/InitializeAccount3
+allow_initialize_multisig = false # InitializeMultisig/InitializeMultisig2
+allow_freeze_account = false     # FreezeAccount
+allow_thaw_account = false       # ThawAccount
+[validation.fee_payer_policy.token_2022]
+allow_transfer = false           # Transfer/TransferChecked
+allow_burn = false               # Burn/BurnChecked
+allow_close_account = false      # CloseAccount
+allow_approve = false            # Approve/ApproveChecked
+allow_revoke = false             # Revoke
+allow_set_authority = false      # SetAuthority
+allow_mint_to = false            # MintTo/MintToChecked
+allow_initialize_mint = false    # InitializeMint/InitializeMint2
+allow_initialize_account = false # InitializeAccount/InitializeAccount3
+allow_initialize_multisig = false # InitializeMultisig/InitializeMultisig2
+allow_freeze_account = false     # FreezeAccount
+allow_thaw_account = false       # ThawAccount
+System Program Instructions
+Option	Description	Default	Type
+allow_transfer	Allow fee payer as sender in Transfer/TransferWithSeed instructions	false	boolean
+allow_assign	Allow fee payer as authority in Assign/AssignWithSeed instructions	false	boolean
+allow_create_account	Allow fee payer as funding payer in CreateAccount/CreateAccountWithSeed instructions	false	boolean
+allow_allocate	Allow fee payer as account owner in Allocate/AllocateWithSeed instructions	false	boolean
+nonce.allow_initialize	Allow fee payer to be set as nonce authority in InitializeNonceAccount	false	boolean
+nonce.allow_advance	Allow fee payer as authority in AdvanceNonceAccount	false	boolean
+nonce.allow_authorize	Allow fee payer as current authority in AuthorizeNonceAccount	false	boolean
+nonce.allow_withdraw	Allow fee payer as authority in WithdrawNonceAccount	false	boolean
+SPL Token Program Instructions
+Option	Description	Default	Type
+allow_transfer	Allow fee payer as owner in Transfer/TransferChecked instructions	false	boolean
+allow_burn	Allow fee payer as owner in Burn/BurnChecked instructions	false	boolean
+allow_close_account	Allow fee payer as owner in CloseAccount instructions	false	boolean
+allow_approve	Allow fee payer as owner in Approve/ApproveChecked instructions	false	boolean
+allow_revoke	Allow fee payer as owner in Revoke instructions	false	boolean
+allow_set_authority	Allow fee payer as current authority in SetAuthority instructions	false	boolean
+allow_mint_to	Allow fee payer as mint authority in MintTo/MintToChecked instructions	false	boolean
+allow_initialize_mint	Allow fee payer as mint authority in InitializeMint/InitializeMint2 instructions	false	boolean
+allow_initialize_account	Allow fee payer as owner in InitializeAccount/InitializeAccount3 instructions	false	boolean
+allow_initialize_multisig	Allow fee payer as signer in InitializeMultisig/InitializeMultisig2 instructions	false	boolean
+allow_freeze_account	Allow fee payer as freeze authority in FreezeAccount instructions	false	boolean
+allow_thaw_account	Allow fee payer as freeze authority in ThawAccount instructions	false	boolean
+Token-2022 supports the same instruction set as SPL Token with identical configuration options (under the [validation.fee_payer_policy.token_2022] section).
+
+Security Considerations
+SECURITY WARNING: For security reasons, it is recommended to set all of these to false (default) and only enable as needed. This will prevent unwanted behavior such as users draining your fee payer account or burning tokens from your fee payer account. This prevents:
+
+Account Drainage: Users transferring SOL or tokens from your fee payer account
+Authority Takeover: Users changing authorities on accounts owned by your fee payer
+Unauthorized Minting: Users minting tokens if your fee payer has mint authority
+Account Manipulation: Users freezing, closing, or modifying accounts controlled by your fee payer
+Best Practice: Start with all permissions disabled and enable only the minimum set needed for your specific use case.
+
+Price Configuration (optional)
+The [validation.price] section defines how transaction fees are calculated. Three pricing models are available:
+
+Margin Pricing (default) - Add a percentage margin on top of actual network fees (default margin is 0.0)
+Fixed Pricing - Charge a fixed amount in a specific token regardless of network fees
+Free Pricing - Sponsor all transaction fees (no charge to users)
+Option	Description	Required	Type
+type	Pricing model to use	✅	"margin", "fixed" or "free"
+margin	Margin percentage to add to network fees	(when type is "margin")	number
+amount	Fixed amount to charge in token's base units	(when type is "fixed")	number
+token	Token mint to charge in	(when type is "fixed")	b58-encoded string
+Margin Pricing
+Add a percentage margin on top of actual network fees:
+
+
+[validation.price]
+type = "margin"
+margin = 0.1  # 10% margin (0.1 = 10%, 1.0 = 100%)
+Fixed Pricing
+SECURITY WARNING: Fixed pricing does NOT include fee payer outflow in the charged amount. This can allow users to drain your fee payer account if not properly configured.
+
+Charge a fixed amount in a specific token regardless of network fees:
+
+
+[validation.price]
+type = "fixed"
+amount = 1000000  # Amount in token's base units
+token = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # USDC mint
+Free Transactions
+Sponsor all transaction fees (no charge to users):
+
+
+[validation.price]
+type = "free"
+Security Measures When Using Fixed/Free Pricing
+Disable All Transfer and Monetary Operations - Prevent fee payer from being used as source in transfers:
+
+
+[validation.fee_payer_policy.system]
+allow_transfer = false              # Block SOL transfers
+allow_create_account = false        # Block account creation with lamports
+allow_allocate = false              # Block space allocation
+[validation.fee_payer_policy.system.nonce]
+allow_withdraw = false              # Block nonce account withdrawals
+[validation.fee_payer_policy.spl_token] # and for [validation.fee_payer_policy.token_2022]
+allow_transfer = false              # Block SPL transfers
+allow_burn = false                  # Block SPL token burning
+allow_close_account = false         # Block SPL token account closures (returns rent)
+allow_mint_to = false               # Block unauthorized SPL token minting
+allow_initialize_account = false    # Block account initialization
+Enable Authentication - Use authentication to prevent abuse:
+
+
+[kora.auth]
+api_key = "your-secure-api-key"
+# or
+hmac_secret = "your-minimum-32-character-hmac-secret"
+Set Conservative Limits - Minimize exposure:
+
+
+[validation]
+max_allowed_lamports = 1000000  # 0.001 SOL maximum
+WARNING: Particularly dangerous operations when using fixed/free pricing:
+
+allow_mint_to: Could allow unlimited token creation if fee payer has mint authority
+allow_set_authority: Could transfer control of critical accounts to attackers
+allow_transfer: Enables direct drainage of fee payer token balances
+allow_close_account: Returns rent to attacker-controlled accounts
+Performance Monitoring (optional)
+The [metrics] section configures metrics collection and monitoring. This section is optional and by default, metrics are disabled.
+
+
+[metrics]
+enabled = true
+endpoint = "/metrics"
+port = 8080
+scrape_interval = 60
+[metrics.fee_payer_balance]
+enabled = true
+expiry_seconds = 30
+Option	Description	Required	Type
+enabled	Enable metrics collection	✅	boolean
+endpoint	Custom metrics endpoint path	✅	string
+port	Metrics endpoint port	✅	number
+scrape_interval	Frequency of Prometheus scrape (seconds)	✅	number
+Fee Payer Balance Tracking
+The [metrics.fee_payer_balance] section configures automatic monitoring of your fee payer's SOL balance:
+
+Option	Description	Required	Type
+enabled	Enable fee payer balance tracking	❌ (default: false)	boolean
+expiry_seconds	Background tracking interval in seconds	❌ (default: 30)	number
+When enabled, Kora automatically tracks your fee payer's SOL balance and exposes it via the fee_payer_balance_lamports Prometheus gauge. This helps with capacity planning and low-balance alerting.
+
+Note: Metrics are served at http://localhost:{port}/{metrics-endpoint} (Metrics can be served on the same port as the RPC server).
+
+→ Kora Monitoring Reference Guide
+
+Complete Example
+Here's a production-ready configuration with security best practices:
+
+
+# Kora Paymaster Configuration
+# Last Updated: 2025-08-22
+[kora]
+# Rate limiting: 100 requests per second globally
+rate_limit = 100
+# Optional payment address (defaults to signer address(es) if not specified)
+# payment_address = "YourPaymentAddressPubkey11111111111111111111"
+[kora.auth]
+# Authentication (choose based on security needs)
+# api_key = "kora_live_sk_generate_secure_key_here"
+hmac_secret = "kora_hmac_minimum_32_character_secret_here"
+max_timestamp_age = 300
+# Caching configuration (optional but recommended for production)
+[kora.cache]
+enabled = true
+url = "redis://localhost:6379"
+default_ttl = 300  # 5 minutes
+account_ttl = 60   # 1 minute
+# Usage limiting (optional, prevents abuse)
+[kora.usage_limit]
+enabled = true
+cache_url = "redis://localhost:6379"  # Can share same Redis instance as cache
+max_transactions = 100                # Per-wallet limit
+fallback_if_unavailable = true        # Don't block if Redis is down
+# Disable unnecessary RPC methods for security
+[kora.enabled_methods]
+liveness = true
+estimate_transaction_fee = true
+get_supported_tokens = true
+sign_transaction = false
+sign_and_send_transaction = false
+transfer_transaction = false
+get_blockhash = true
+get_config = true
+get_payer_signer = true
+[validation]
+# Use production oracle
+price_source = "Jupiter"
+# Conservative transaction limits
+max_allowed_lamports = 1000000  # 0.001 SOL max
+max_signatures = 10
+# Minimal program allowlist (expand as needed)
+allowed_programs = [
+    "11111111111111111111111111111111",              # System Program
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",   # SPL Token
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",  # Associated Token
+    "AddressLookupTab1e1111111111111111111111111",   # Address Lookup Table
+    "ComputeBudget11111111111111111111111111111111", # Compute Budget
+    "MyProgram111111111111111111111111111111111", 
+    # Add your specific program IDs here
+]
+# Production token allowlist
+allowed_tokens = [
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
+    "So11111111111111111111111111111111111111112",   # Wrapped SOL
+    "MyToken1111111111111111111111111111111111111111",
+    # Add tokens your application uses
+]
+# Payment tokens (only liquid, trusted tokens)
+allowed_spl_paid_tokens = [
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC only
+]
+# Known bad actors or compromised addresses
+disallowed_accounts = [
+    "BadActor1111111111111111111111111111111111111111",
+]
+# Restrictive fee payer policy (recommended for production)
+[validation.fee_payer_policy.system]
+allow_transfer = false           # Block SOL transfers from fee payer
+allow_assign = false             # Block account ownership changes
+allow_create_account = false     # Block creating accounts with fee payer funds
+allow_allocate = false           # Block allocating space for fee payer accounts
+[validation.fee_payer_policy.system.nonce]
+allow_initialize = false         # Block nonce account initialization
+allow_advance = false            # Block nonce advancement
+allow_authorize = false          # Block nonce authority changes
+allow_withdraw = false           # Block nonce withdrawals
+[validation.fee_payer_policy.spl_token]
+allow_transfer = false           # Critical: Block SPL transfers
+allow_burn = false               # Block token burning
+allow_close_account = false      # Block account closures
+allow_approve = false            # Block token approvals
+allow_revoke = false             # Block delegate revocations
+allow_set_authority = false      # Block authority changes
+allow_mint_to = false            # Block minting operations
+allow_initialize_mint = false    # Block mint initialization
+allow_initialize_account = false # Block account initialization
+allow_initialize_multisig = false # Block multisig initialization
+allow_freeze_account = false     # Block account freezing
+allow_thaw_account = false       # Block account thawing
+[validation.fee_payer_policy.token_2022]
+allow_transfer = false           # Critical: Block Token2022 transfers
+allow_burn = false               # Block token burning
+allow_close_account = false      # Block account closures
+allow_approve = false            # Block token approvals
+allow_revoke = false             # Block delegate revocations
+allow_set_authority = false      # Block authority changes
+allow_mint_to = false            # Block minting operations
+allow_initialize_mint = false    # Block mint initialization
+allow_initialize_account = false # Block account initialization
+allow_initialize_multisig = false # Block multisig initialization
+allow_freeze_account = false     # Block account freezing
+allow_thaw_account = false       # Block account thawing
+# Token-2022 extension blocking
+[validation.token2022]
+# Block potentially risky mint extensions
+blocked_mint_extensions = [
+    "transfer_hook",       # Custom transfer logic
+    "pausable",            # Can freeze transfers
+    "permanent_delegate",  # Permanent control
+]
+# Block complex account extensions
+blocked_account_extensions = [
+    "cpi_guard",      # Restricts composability
+    "memo_transfer",  # Requires additional data
+]
+# Sustainable pricing with 15% margin
+[validation.price]
+type = "margin"
+margin = 0.15  # 15% margin on network fees
+# Metrics collection
+[metrics]
+enabled = true
+endpoint = "/metrics"
+port = 8080
+scrape_interval = 60
+# Fee payer balance monitoring
+[metrics.fee_payer_balance]
+enabled = true
+expiry_seconds = 30
+Configuration Validation
+Kora validates your configuration on startup. If you would like to validate your configuration without starting the server, you can use the config validation command:
+
+
+kora --config kora.toml config validate # or validate-with-rpc
+You can also run the validate-with-rpc command to validate your configuration with the RPC server (this validation check is a little bit slower but does more thorough account checks)
+
+Starting the Server
+Once you have configured your kora.toml file, you can start the Kora server:
+
+
+kora --config path/to/kora.toml rpc start --no-load-signer # --other-rpc-flags-here
+The --no-load-signer flag will initialize the server without loading any signers. This is useful for testing your configuration. In order to load signers, you will need to configure the signers.toml file. A minimum configuration with a single signer would look like this:
+
+
+[signer_pool]
+# Selection strategy: round_robin, random, weighted
+strategy = "round_robin"
+# Primary memory signer
+[[signers]]
+name = "my-signer"
+type = "memory"
+private_key_env = "MY_SIGNER_PRIVATE_KEY"
+This will load a single signer from the MY_SIGNER_PRIVATE_KEY environment variable. Then you can start your server with:
+
+
+kora --config path/to/kora.toml rpc start --signers-config path/to/signers.toml
+For more information and advanced signer configuration, see the Signers Guide.
+
+Best Practices
+Start Restrictive: Begin with tight limits and gradually expand
+Monitor Usage: Track which programs and tokens are actually used
+Regular Updates: Review and update blocklists and limits
+Test Changes: Validate configuration changes in staging first
+Versioning: Keep a changelog of your configuration changes
+Need Help?
+Check Authentication Guide for auth setup
+Check Signers Guide for signer configuration
+Check Operator Guide for more information on how to run a Kora node
+Visit Solana Stack Exchange with the kora tag
+Report issues on GitHub
+
+Signers
+Set up and manage Kora signers
+
+Last Updated: 2025-08-22
+
+What is a Signer?
+A signer is the cryptographic keypair that your Kora node uses to sign Solana transactions as the fee payer. When users send transactions to your Kora node, it validates them and co-signs them with your signer's private key to cover the SOL transaction fees.
+
+Note: By default, token payment fees are sent to the signer's address. However, you can configure a separate payment_address in your kora.toml to receive payments at a different address while keeping your signer separate. See Configuration Guide for details.
+
+Your signer keypair has direct access to your SOL funds used for paying transaction fees. If compromised, an attacker could:
+
+Drain your SOL balance
+Sign unauthorized transactions
+Disrupt your paymaster service
+Signer Configuration
+The Kora RPC CLI requires a signer.toml to be specified via the --signers-config flag. The singer.toml file allows you to configure the signer(s) and signer configuration for your node. signer.toml has two sections:
+
+[signer_pool] - Configuration for the signer pool
+[[signers]] - Configuration for each signer (at least one signer is required unless using --no-load-signer flag which has limited functionality)
+[signer_pool]
+The signer pool configuration specifies attributes specific to the signer pool as a whole:
+
+strategy - The selection strategy for choosing signers. Available strategies are:
+round_robin (default)- Cycle through signers in order.
+random - Select signers randomly.
+weighted - Select signers based on weight.
+[[signers]]
+Each signer is configured with:
+
+a name: a human-readable identifier for the signer and must be unique within the signer pool
+an optional weight: a number that specifies the weight of the signer if strategy is weighted
+a type and type-specific configuration (see Signer Types)
+One signer is required unless using the --no-load-signer flag which has limited functionality. For production deployments, it is recommended to configure multiple signers for improved reliability and performance.
+
+Example
+Here's an example signers.toml file to defines a round-robin signer pool with three signers (note: we'll cover the different signer types/configurations in the next section):
+
+
+[signer_pool]
+# Selection strategy: round_robin, random, weighted
+strategy = "round_robin"
+# Primary memory signer
+[[signers]]
+name = "signer_1"
+type = "memory"
+private_key_env = "SIGNER_1_PRIVATE_KEY"
+# weight = 1 # Not required if strategy is not weighted
+# Backup memory signer
+[[signers]]
+name = "signer_2"
+type = "memory"
+private_key_env = "SIGNER_2_PRIVATE_KEY"
+# weight = 1 # Not required if strategy is not weighted
+# Turnkey signer for high-value operations
+[[signers]]
+name = "signer_3_turnkey"
+type = "turnkey"
+api_public_key_env = "TURNKEY_API_PUBLIC_KEY"
+api_private_key_env = "TURNKEY_API_PRIVATE_KEY"
+organization_id_env = "TURNKEY_ORG_ID"
+private_key_id_env = "TURNKEY_PRIVATE_KEY_ID"
+public_key_env = "TURNKEY_PUBLIC_KEY"
+# weight = 2  # Higher weight = selected more often
+Environment Variables
+Set environment variables for all configured signers:
+
+
+# Memory signers
+SIGNER_1_PRIVATE_KEY="your_base58_private_key_1"
+SIGNER_2_PRIVATE_KEY="your_base58_private_key_2"
+# Turnkey signer
+TURNKEY_API_PUBLIC_KEY="your_turnkey_api_public_key"
+TURNKEY_API_PRIVATE_KEY="your_turnkey_api_private_key"
+TURNKEY_ORG_ID="your_turnkey_organization_id"
+TURNKEY_PRIVATE_KEY_ID="your_turnkey_private_key_id"
+TURNKEY_PUBLIC_KEY="your_turnkey_public_key"
+Start Kora with Signers Configuration
+
+kora --config path/to/kora.toml rpc start --signers-config path/to/signers.toml
+Signer Types
+Kora supports four main signer types, each with different security and operational characteristics (and a no-signer option for limited testing):
+
+Private Key - simple, self-managed
+Turnkey - key management service
+Privy - key management service
+Vault - HashiCorp Vault integration
+No Signer - no signer (for limited testing)
+Private Key Signer
+The simplest approach - store your private key directly in environment variables or pass via CLI flags. Kora accepts private keys in three formats:
+
+1. Base58 Format (Default)
+Standard Solana base58 encoded private key:
+
+
+KORA_PRIVATE_KEY="5KKsLVU6TcbVDK4BS6K1DGDxnh4Q9xjYJ8XaDCG5t8ht..."
+2. U8Array Format
+Array of 64 bytes in JSON format:
+
+
+KORA_PRIVATE_KEY="[174, 47, 154, 16, 202, 193, 206, 113, 199, 190, 53, 133, 169, 175, 31, 56, 222, 53, 138, 189, 224, 216, 117, 173, 10, 149, 53, 45, 73, 251, 237, 246, 15, 185, 186, 82, 177, 240, 148, 69, 241, 227, 167, 80, 141, 89, 240, 121, 121, 35, 172, 247, 68, 251, 226, 218, 48, 63, 176, 109, 168, 89, 238, 135]"
+3. JSON File Path
+Path to a JSON file containing the keypair:
+
+
+KORA_PRIVATE_KEY="/path/to/keypair.json"
+Where keypair.json contains:
+
+
+[174, 47, 154, 16, 202, 193, 206, 113, 199, 190, 53, 133, 169, 175, 31, 56, 222, 53, 138, 189, 224, 216, 117, 173, 10, 149, 53, 45, 73, 251, 237, 246, 15, 185, 186, 82, 177, 240, 148, 69, 241, 227, 167, 80, 141, 89, 240, 121, 121, 35, 172, 247, 68, 251, 226, 218, 48, 63, 176, 109, 168, 89, 238, 135]
+Generate New Keypair
+You can create a new keypair for your Kora node using the Solana CLI:
+
+
+# Generate new keypair file
+solana-keygen new --outfile ~/.config/solana/kora-keypair.json
+# Get the public key
+solana-keygen pubkey ~/.config/solana/kora-keypair.json
+# Fund with SOL for transaction fees
+solana transfer --from <your-funding-wallet> <kora-public-key> 0.1
+Signer.toml Configuration
+Required variables:
+
+name - The name of the signer
+type - The type of signer (must be memory)
+private_key_env - The environment variable containing the private key
+
+[[signers]]
+name = "my_memory_signer"
+type = "memory"
+private_key_env = "KORA_PRIVATE_KEY" # (or your environment variable name)
+Turnkey Signer
+Turnkey provides enterprise-grade key management with hardware security modules (HSMs) and policy controls.
+
+Prerequisites
+You will need a Turnkey Account to use the Turnkey signer. Sign up at turnkey.com
+
+Setup
+You will need five keys to use the Turnkey signer:
+
+Turnkey organization ID
+Turnkey API public key
+Turnkey API private key
+Turnkey private key ID
+Turnkey public key
+Let's fetch them from Turnkey:
+
+1. Turnkey Organization
+Click the user menu in the top right corner of the Turnkey dashboard and copy the organization ID:
+
+Turnkey Organization ID
+
+Store the organization ID in an environment variable:
+
+
+TURNKEY_ORGANIZATION_ID="your_organization_id"
+2. Turnkey API Keys
+Click the user menu in the top right corner of the Turnkey dashboard and click "Account Settings".
+Under "API Keys", click "+ Create API Key".
+Select "Generate API keys in-browser"
+Enter a name for the API key and click "Continue"
+Save the public and private keys and click "Approve"
+Turnkey API Keys
+
+Store the API public and private keys in environment variables:
+
+
+TURNKEY_API_PUBLIC_KEY="your_turnkey_api_public_key"
+TURNKEY_API_PRIVATE_KEY="your_turnkey_api_private_key"
+3. Turnkey Wallet Keys
+From the main menu, navigate to "Wallets" and click "Create Private Key".
+
+We are going to create a new ED25519 private key with "Solana" asset address type:
+
+Turnkey Wallets
+
+Click "Continue" and then "Approve".
+
+From your wallets page, you should see your new private key. Click on it to view the details. You will need to copy the "Private key ID" and wallet "Address". Save them to environment variables:
+
+
+TURNKEY_PRIVATE_KEY_ID="your_private_key_id" #7936...
+TURNKEY_PUBLIC_KEY="your_solana_address" # 4gBe...
+Turnkey Wallet Details
+
+You will need to fund the wallet with SOL to pay for transaction fees.
+
+Configure Environment Variables
+You should now have the following environment variables:
+
+
+# .env file
+TURNKEY_ORGANIZATION_ID="your_organization_id"
+TURNKEY_API_PUBLIC_KEY="your_turnkey_api_public_key"
+TURNKEY_API_PRIVATE_KEY="your_turnkey_api_private_key"
+TURNKEY_PRIVATE_KEY_ID="your_private_key_id"
+TURNKEY_PUBLIC_KEY="your_solana_public_key"
+See .env.example for a complete example.
+
+For support with Turnkey, see the Turnkey documentation.
+
+Signer.toml Configuration
+Required variables:
+
+name - The name of the signer
+type - The type of signer (must be turnkey)
+api_public_key_env - The environment variable containing the Turnkey API public key
+api_private_key_env - The environment variable containing the Turnkey API private key
+organization_id_env - The environment variable containing the Turnkey organization ID
+private_key_id_env - The environment variable containing the Turnkey private key ID
+public_key_env - The environment variable containing the Turnkey public key
+
+[[signers]]
+name = "my_turnkey_signer"
+type = "turnkey"
+api_public_key_env = "TURNKEY_API_PUBLIC_KEY"
+api_private_key_env = "TURNKEY_API_PRIVATE_KEY"
+organization_id_env = "TURNKEY_ORG_ID"
+private_key_id_env = "TURNKEY_PRIVATE_KEY_ID"
+public_key_env = "TURNKEY_PUBLIC_KEY"
+Privy Signer
+Privy offers embedded wallet infrastructure with secure key management for Web3 applications.
+
+Prerequisites
+You will need a Privy Account to use the Privy signer. Sign up at privy.io
+
+Setup
+You will need three keys to use the Privy signer:
+
+Privy App ID
+Privy App Secret
+Privy Wallet ID
+Let's fetch them from Privy:
+
+1. Privy App ID
+From your dashboard, select the application you want to use for Kora (or click "+ New app" if you don't have one).
+
+Select "Retrieve API Keys" anc click "+ New Secret":
+
+Privy Wallets
+
+Copy your "App ID" and "App Secret" and store them in environment variables:
+
+
+PRIVY_APP_ID="your_privy_app_id"
+PRIVY_APP_SECRET="your_privy_app_secret"
+2. Privy Wallet
+Next, we'll need to create a new wallet for Kora. From your dashboard's sidebar click "Wallets" under "Wallet Infrastructure", and select "New Wallet".
+
+Select "Solana" as the blockchain and click "Save".
+
+Click on the wallet to view the details:
+
+Privy Wallets
+
+Copy the "Wallet ID" and store them in environment variables:
+
+
+PRIVY_WALLET_ID="your_privy_wallet_id"
+You will need to fund the wallet with SOL to pay for transaction fees.
+
+Configure Environment Variables
+You should now have the following environment variables:
+
+
+# .env file
+PRIVY_APP_ID="your_privy_app_id"
+PRIVY_APP_SECRET="your_privy_app_secret"
+PRIVY_WALLET_ID="your_wallet_id"
+See .env.example for a complete example.
+
+For support with Privy, see the Privy documentation.
+
+Signer.toml Configuration
+Required variables:
+
+name - The name of the signer
+type - The type of signer (must be privy)
+app_id_env - The environment variable containing the Privy app ID
+app_secret_env - The environment variable containing the Privy app secret
+wallet_id_env - The environment variable containing the Privy wallet ID
+
+[[signers]]
+name = "my_privy_signer"
+type = "privy"
+app_id_env = "PRIVY_APP_ID"
+app_secret_env = "PRIVY_APP_SECRET"
+wallet_id_env = "PRIVY_WALLET_ID"
+No Signer
+If no signer is configured, Kora will throw an error. If you want to run Kora without a signer, you run it with the --no-signer flag:
+
+
+kora --config path/to/kora.toml rpc start --no-signer
+Note that this will limit your node to only processing requests that do not require a signer.
+
+Troubleshooting
+Quick Reference
+Error Message	Signer Type	Quick Fix
+"At least one signer must be configured"	Any	Add at least one signer to config
+"Failed to read config file"	Any	Check file path and contents
+"Failed to parse signers config TOML"	Any	Check file format and signer contents
+"Duplicate signer name"	Any	Ensure each signer is uniquely named in the configuration
+"Invalid base58 string"	Private Key	Check key format, no extra spaces
+"Invalid private key length"	Private Key	Use complete 64-byte Solana key
+"Turnkey {key} required"	Turnkey	Set TURNKEY_{key}
+"Privy {key} required"	Privy	Set PRIVY_{key}
+"Vault {key} required"	Vault	Set VAULT_{key}
+"Failed to create Vault client"	Vault	Verify Vault credentials
+"Failed to sign with [service]"	Any	Check service status & credentials & rate limits
+"Signer pool not initialized"	Multi-Signer	Check signers.toml path and format
+"Cannot create empty signer pool"	Multi-Signer	Add at least one signer to config
+"Signer with pubkey ... not found"	Multi-Signer	Check signer hint matches configured signers
+"Signers configuration is required unless using --no-load-signer"	Any	Add a signers configuration file
+General Debugging Tips
+Enable Verbose Logging
+Add detailed logging to diagnose issues:
+
+
+RUST_LOG=debug kora rpc --with-turnkey-signer
+Security & Best Practices
+General Security
+Use dedicated keypairs for Kora (don't reuse personal wallets)
+Only fund with SOL you're willing to spend on fees
+Maintain minimal operational balance with automated monitoring and top-offs
+Implement monitoring and alerting for unusual activity
+All private keys and API keys should be stored in environment variables or secrets management systems (Railway secrets, AWS Secrets Manager, etc.)
+Specifying a Signer (Client-Side)
+Clients can specify a preferred signer for consistency across related operations:
+
+
+// Fetch the signers by calling getPayerSigner
+const { signer, payment_destination } = await client.getPayerSigner();
+console.log(signer, payment_destination);
+// Estimate with specific signer
+const estimate = await client.estimateTransactionFee({
+  transaction: tx,
+  signer_key: signer  // Public key of preferred signer (one of the signers in the signer pool)
+});
+// Sign with same signer
+const signed = await client.signTransaction({
+  transaction: tx,
+  signer_key: signer  // Same signer for consistency
+});
+Without signer keys, the configured strategy determines signer selection. It is important to note that keys must be consistent across calls related to the same transaction (e.g., if you generate a transaction with a specified signer key, you must use the same signer key for all related calls).
+
+CLI Reference
+Complete reference for Kora command-line interface, including commands and flags.
+
+Last Updated: 2025-08-25
+
+Complete reference for Kora command-line interface, including commands and flags.
+
+Installation
+
+cargo install kora-cli
+Basic Usage
+
+kora [OPTIONS]
+Common CLI Commands
+Command	Description
+kora config validate	Validate configuration file (fast, no RPC calls)
+kora config validate-with-rpc	Validate configuration with on-chain account verification
+kora rpc start	Start the RPC server
+kora rpc initialize-atas	Initialize ATAs for all payment tokens
+Kora Flags
+Customize Kora's behavior with these global command-line flags after the kora command:
+
+Flag	Description	Default	Example
+--config	Path to Kora configuration file (TOML format)	kora.toml	kora --config path/to/kora.toml
+--rpc-url	Solana RPC endpoint URL	http://127.0.0.1:8899	kora --rpc-url https://api.devnet.solana.com
+--help	Print help information	-	kora --help
+--version	Print version information	-	kora --version
+RPC Server Flags
+Configure the RPC server with these flags (used with kora rpc start):
+
+Flag	Description	Default	Example
+--signers-config	Path to multi-signer configuration file (TOML)	Required*	--signers-config signers.toml
+--no-load-signer	Skip signer initialization	false	--no-load-signer
+-p, --port	HTTP port for RPC requests	8080	--port 3000
+--logging-format	Output format for logs (standard or json)	standard	--logging-format json
+--help	Print help information	-	kora rpc start --help
+*Required unless using --no-load-signer
+
+ATA Initialization Flags
+Configure ATA initialization with these flags (used with kora rpc initialize-atas):
+
+Flag	Description	Default	Example
+--signers-config	Path to multi-signer configuration file	Required*	--signers-config signers.toml
+--fee-payer-key	Public key of signer to use as fee payer (must be in signers.toml)	First signer	--fee-payer-key "pubkey123..."
+--compute-unit-price	Priority fee in micro-lamports	None	--compute-unit-price 1000
+--compute-unit-limit	Compute unit limit for transactions	None	--compute-unit-limit 200000
+--chunk-size	Number of ATAs to create per transaction	None	--chunk-size 10
+Common Usage Examples
+Starting the RPC Server
+
+# Basic start with default settings
+kora --config path/to/kora.toml rpc start --signers-config path/to/signers.toml
+# Start with custom port and config
+kora --config path/to/kora.toml rpc start \
+  --signers-config path/to/signers.toml \
+  --port 8080 \
+  --logging-format json
+# Start for testing without signers
+kora --config path/to/kora.toml rpc start --no-load-signer
+Configuration Validation
+
+# Quick validation (offline)
+kora --config path/to/kora.toml config validate
+# Thorough validation with RPC checks
+kora --config path/to/kora.toml --rpc-url https://api.mainnet-beta.solana.com \
+  config validate-with-rpc
+The validate-with-rpc command performs additional on-chain verification:
+
+Program accounts: Verifies all allowed programs exist and are executable
+Token mints: Confirms all allowed tokens exist as valid mint accounts
+Payment tokens: Validates all SPL paid tokens are valid mints
+Payment address ATAs: Checks if payment address has ATAs for all allowed tokens
+Account types: Ensures accounts have the expected type (program vs mint)
+Managing ATAs
+
+# Initialize ATAs for payment address/signers
+kora rpc initialize-atas --signers-config signers.toml
+# Initialize with custom fee payer and priority
+kora rpc initialize-atas \
+  --signers-config signers.toml \
+  --fee-payer-key "7xKXtg2CW87d3HEQ2BpKHpcPKBhpKGQPPRQJyccVLow9" \
+  --compute-unit-price 1000 \
+  --chunk-size 10
+Environment Variables
+These environment variables can be used instead of command-line flags:
+
+Variable	Description	Flag Equivalent
+RPC_URL	Solana RPC endpoint	--rpc-url
+See Also
+Operators Guide - Overview of Kora operators
+Configuration Guide - Detailed configuration options
+Signers Guide - Signer types and configuration
+Authentication Guide - Setting up API authentication
+Quick Start Guide - Getting started with Kora
+
+Authentication
+Operator's reference guide to authentication
+
+Kora supports two optional authentication methods for securing your RPC endpoint: API Key and HMAC authentication. This guide covers setup, implementation, and security best practices.
+
+Authentication is optional but strongly recommended for production deployments. Without authentication, anyone who discovers your Kora endpoint can submit transactions and consume your SOL balance.
+
+Method	Security Level	Use Case	Complexity
+None	⚠️ None	Development, testing, high-margin pricing	None
+API Key	Basic	Internal apps, trusted clients	Low
+HMAC	High	Public APIs, untrusted networks	Medium
+Both	Maximum	High-security environments	Medium
+Kora Authentication is configured in the kora.toml file in the [kora.auth] section.
+
+In this document:
+
+API Key Authentication
+HMAC Authentication
+Combined Authentication
+Security Best Practices
+Exempt Endpoints
+Troubleshooting
+API Key Authentication
+Simple shared secret authentication using HTTP headers. You can generate a new API key using the openssl command (or a similar command) in your terminal:
+
+
+openssl rand -hex 32
+Server Configuration
+Add a KORA_API_KEY to your .env (environment variables) (has priority) or
+Add an api_key to your kora.toml:
+
+[kora.auth]
+api_key = "kora_live_sk_1234567890abcdef"  # Use a strong, unique key
+This key will be globally required for all requests to the Kora RPC endpoint.
+
+Client Implementation
+Include the API key in the x-api-key header with every request:
+
+cURL Example:
+
+
+curl -X POST http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: kora_live_sk_1234567890abcdef" \
+  -d '{"jsonrpc": "2.0", "method": "getConfig", "id": 1}'
+JavaScript Example using Kora SDK:
+
+
+const { KoraClient } = require('@solana/kora');
+const kora = new KoraClient({
+  rpcUrl: 'http://localhost:8080',
+  apiKey: process.env.KORA_API_KEY
+});
+const config = await kora.getConfig();
+console.log(config);
+JavaScript Example using fetch:
+
+
+async function callKora(method, params = []) {
+  const response = await fetch('http://localhost:8080', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.KORA_API_KEY //'kora_live_sk_1234567890abcdef'
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      method,
+      params,
+      id: 1
+    })
+  });
+  
+  return response.json();
+}
+const config = await callKora('getConfig');
+console.log(config);
+HMAC Authentication
+Instead of sending an API key with every request, HMAC creates a unique cryptographic signature that proves you know a secret without revealing it. Each signature includes a timestamp and expires after 5 minutes, so intercepted requests can't be replayed. Attackers can't create new requests because they don't have your secret key.
+
+Server Configuration
+Add KORA_HMAC_SECRET to your .env (environment variables) (has priority) or
+Add a global hmac_secret to your kora.toml (minimum 32 characters--you can generate one with openssl rand -hex 32 or similar):
+
+[kora.auth]
+hmac_secret = "kora_hmac_your-strong-hmac-secret-key"
+How HMAC Works
+Client creates a message by concatenating: {timestamp}{request_body}
+Client signs the message using HMAC-SHA256 with the shared secret
+Client sends the request with timestamp and signature headers
+Server validates the signature and timestamp (must be within 5 minutes)
+Client Implementation
+To use HMAC client-side, you can use the Kora SDK or the crypto library in JavaScript:
+
+Create a timestamp
+Create the request body
+Create a message by concatenating the timestamp and body (e.g., message = timestamp + body)
+Create a signature by signing the message with the HMAC secret (using the crypto.createHmac method)
+Send the request with the timestamp (x-timestamp) and signature (x-hmac-signature) headers
+JavaScript Example using Kora SDK:
+
+The Kora SDK abstracts away the HMAC authentication process, so you can simply call the method you want to call and the SDK will handle the authentication for you.
+
+
+const { KoraClient } = require('@solana/kora');
+const kora = new KoraClient({
+  rpcUrl: 'http://localhost:8080',
+  hmacSecret: process.env.KORA_HMAC_SECRET
+});
+const config = await kora.getConfig();
+console.log(config);
+JavaScript Example using crypto library:
+
+
+async function callKoraHMAC(method, params = []) {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const body = JSON.stringify({
+    jsonrpc: '2.0',
+    method,
+    params,
+    id: 1
+  });
+  
+  // Create HMAC signature
+  const message = timestamp + body;
+  const signature = crypto
+    .createHmac('sha256', process.env.KORA_HMAC_SECRET) // kora_hmac_your-strong-hmac-secret-key
+    .update(message)
+    .digest('hex');
+  
+  const response = await fetch('http://localhost:8080', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-timestamp': timestamp,
+      'x-hmac-signature': signature
+    },
+    body: body
+  });
+  
+  return response.json();
+}
+const config = await callKoraHMAC('getConfig');
+console.log(config);
+Combined Authentication
+You can enable both authentication methods simultaneously for maximum security:
+
+
+[kora.auth]
+api_key = "kora_live_sk_1234567890abcdef"
+hmac_secret = "kora_hmac_your-strong-hmac-secret-key"
+When both are configured, clients must send the x-api-key, x-timestamp, and x-hmac-signature headers.
+
+Security Best Practices
+Use strong, random keys: Minimum 32 characters with high entropy
+Rotate regularly: Change keys periodically (monthly/quarterly)
+Secure storage: Use environment variables or secrets management (Railway secrets, AWS Secrets Manager, etc.)
+Never hardcode: Keep keys out of source code and logs
+Use HTTPS: Always use TLS in production to protect keys in transit
+Monitor access: Watch for unusual authentication patterns or repeated failures
+Exempt Endpoints
+The /liveness endpoint is always exempt from authentication to allow health checks:
+
+
+# This works even with authentication enabled
+curl http://localhost:8080/liveness
+Troubleshooting
+401 Unauthorized with API Key:
+
+Verify the API key is correct and matches server configuration
+Check that the x-api-key header is being sent
+Ensure no extra whitespace in the key
+401 Unauthorized with HMAC:
+
+Verify timestamp is current (within 5 minutes)
+Check that message construction matches: {timestamp}{body}
+Ensure HMAC secret matches server configuration
+Verify signature is lowercase hex
+
+Fees Reference
+Complete reference for Kora fee calculation.
+
+Last updated: 2025-10-31
+
+Kora estimates transaction fees when performing estimate_transaction_fee and sign_transaction RPC methods. To estimate fees, Kora calculates the total cost for executing transactions on Solana, including network fees, account creation costs, and optional payment processing fees. This guide breaks down each component of the fee calculation.
+
+Fee Calculation Formula
+The fee is determined by the pricing model configured in kora.toml:
+
+PriceModel::Free - Sponsors all transaction fees (total fee = 0)
+PriceModel::Fixed - Charges a fixed amount in a specific token (regardless of network fees)
+PriceModel::Margin - Adds a percentage margin to total fees.
+The main entry point for total fee estimation used in PriceModel::Margin is FeeConfigUtil::estimate_kora_fee() in crates/lib/src/fee/fee.rs. It uses the following generalized formula:
+
+
+Total Fee = Base Fee 
+          + Account Creation Fee 
+          + Kora Signature Fee 
+          + Fee Payer Outflow 
+          + Payment Instruction Fee 
+          + Transfer Fee Amount
+          + Margin Adjustment
+Fee Components
+Component	Description	Calculation Method	When Applied
+Base Fee	Core Solana transaction fee covering signature verification and transaction processing	RpcClient.get_fee_for_message() - Uses Solana's fee calculation based on compute units and priority fees	Always
+Account Creation Fee	Rent-exempt minimum balance for creating new Associated Token Accounts (ATAs)	Rent::default().minimum_balance(account_size) - Calculates rent based on account data size (165-355 bytes depending on token extensions)	When transaction creates new ATAs
+Kora Signature Fee	Additional fee when Kora signs as a non-participant fee payer	Fixed: 5,000 lamports (LAMPORTS_PER_SIGNATURE)	When fee payer is not already a transaction signer
+Fee Payer Outflow	Total SOL the fee payer sends out in the transaction (transfers, account creations, etc.)	Sum of: System transfers from fee payer, CreateAccount funded by fee payer, Nonce withdrawals from fee payer	When fee payer performs System Program operations
+Payment Instruction Fee	Estimated cost of priority fees to add a payment instruction for gasless transactions	Fixed estimate: 50 lamports (ESTIMATED_LAMPORTS_FOR_PAYMENT_INSTRUCTION)	When payment is required but not included in transaction
+Transfer Fee	Token2022 transfer fees configured on the mint (e.g., 1% of transfer amount)	Token2022Mint.calculate_transfer_fee(amount, epoch) - Based on mint's transfer fee configuration	Only for Token2022 transfers to Kora payment address
+Margin Adjustment	Kora's pricing model markup/adjustment	Configured margin in validation.price - Can add markup as a % of the total fee	When [validation.price] is provided in kora.toml
+Pricing Models & Fee Payer Outflow
+Kora supports three pricing models that determine how users are charged for transactions:
+
+Margin Pricing (Default)
+Formula: Total Fee = (Base + Outflow + Other Components) × (1 + margin)
+Includes Fee Payer Outflow: Yes
+Best For: Production deployments where fees should reflect actual costs with an added operating margin
+Fixed Pricing
+Formula: Total Fee = Fixed Amount (in specified token)
+Includes Fee Payer Outflow: No
+Best For: Simplified UX with predictable pricing in controlled environments
+Free Pricing
+Formula: Total Fee = 0
+Includes Fee Payer Outflow: No (operator absorbs all costs)
+Best For: Promotional campaigns, testing, or fully sponsored applications
+⚠️ Security Warning: Fixed/Free Pricing Models
+CRITICAL: The fixed/free pricing models do NOT include fee payer outflow in the charged amount. This creates a significant security risk if not properly configured. If your fee payer policy allows transfers or other outflow operations, attackers can exploit this to drain your fee payer account.
+
+Required Security Controls
+When using fixed/free pricing, you MUST configure restrictive fee payer policies to block ALL monetary and authority-changing operations:
+
+
+[validation.fee_payer_policy.system]
+allow_transfer = false              # Block SOL transfers
+allow_create_account = false        # Block account creation with lamports
+allow_allocate = false              # Block space allocation
+[validation.fee_payer_policy.system.nonce]
+allow_withdraw = false              # Block nonce account withdrawals
+[validation.fee_payer_policy.spl_token] # and for [validation.fee_payer_policy.token_2022]
+allow_transfer = false              # Block SPL transfers
+allow_burn = false                  # Block SPL token burning
+allow_close_account = false         # Block SPL token account closures (returns rent)
+allow_mint_to = false               # Block unauthorized SPL token minting
+allow_initialize_account = false    # Block account initialization
+Additional Protections
+Enable Authentication: Always require API key or HMAC authentication with fixed/free pricing
+Set Low Limits: Use conservative max_allowed_lamports values
+Monitor Usage: Track unusual patterns of high-outflow transactions
+Consider Margin Pricing: Margin pricing automatically includes outflow costs in fees
+Validation Warnings
+Kora's config validator will warn you about dangerous configurations:
+
+
+kora --config kora.toml config validate
+Expected warnings for vulnerable configs:
+
+
+⚠️  SECURITY: Fixed pricing with system.allow_transfer=true.
+    Users can make the fee payer transfer arbitrary SOL amounts at fixed cost.
+    This can drain your fee payer account.
+
+    Monitoring & Metrics
+Monitor your Kora node with Prometheus and Grafana
+
+Last Updated: 2025-08-22
+
+The Kora Metrics Crate provides comprehensive metrics collection and monitoring for the Kora RPC server.
+
+Kora exposes a /metrics endpoint that provides real-time performance data in Prometheus format.
+
+Configuration
+Metrics are configured in the [metrics] section of your kora.toml. The [metrics] section configures metrics collection and monitoring. This section is optional and by default, metrics are disabled.
+
+
+[metrics]
+enabled = true
+endpoint = "/metrics"
+port = 8080
+scrape_interval = 60
+[metrics.fee_payer_balance]
+enabled = true
+expiry_seconds = 30
+Option	Description	Required	Type
+enabled	Enable metrics collection	✅	boolean
+endpoint	Custom metrics endpoint path	✅	string
+port	Metrics endpoint port	✅	number
+scrape_interval	Frequency of Prometheus scrape (seconds)	✅	number
+Fee Payer Balance Tracking
+The [metrics.fee_payer_balance] section configures automatic monitoring of your fee payer's SOL balance:
+
+Option	Description	Required	Type
+enabled	Enable fee payer balance tracking	❌ (default: false)	boolean
+expiry_seconds	Background tracking interval in seconds	❌ (default: 30)	number
+When enabled, Kora automatically tracks your fee payer's SOL balance and exposes it via the fee_payer_balance_lamports Prometheus gauge. This helps with capacity planning and low-balance alerting.
+
+Quick Start
+Access metrics:
+
+
+curl http://localhost:8080/metrics
+What You'll See
+The metrics show how your RPC server is performing:
+
+
+# Total requests by method and status
+kora_http_requests_total{method="signTransaction",status="200"} 42
+kora_http_requests_total{method="signTransaction",status="400"} 3
+# Request duration (in seconds) by method  
+kora_http_request_duration_seconds{method="signTransaction"} 0.045
+# Signer balances (for multi-signer setups)
+signer_balance_lamports{signer_name="primary_signer",signer_pubkey="4gBe...xyz"} 500000000
+signer_balance_lamports{signer_name="backup_signer",signer_pubkey="7XyZ...abc"} 300000000
+If you haven't called the RPC server yet, you will not see any metrics. You can run a simple test by calling the getConfig method:
+
+
+curl -X POST http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "getConfig", "id": 1}'
+and then check the metrics:
+
+
+curl http://localhost:8080/metrics
+Key Metrics Explained
+kora_http_requests_total - How many requests you've handled
+
+method: Which RPC method was called
+status: HTTP status code (200=success, 400=error, etc.)
+Use this to track usage patterns and error rates
+kora_http_request_duration_seconds - How fast your requests are
+
+Shows percentiles (p50, p95, p99) for response times
+Use this to identify slow endpoints
+signer_balance_lamports - Current SOL balance of each signer
+
+Shows balance in lamports (1 SOL = 1,000,000,000 lamports) for each signer
+Labels: signer_name (human-readable name) and signer_pubkey (public key)
+Updated automatically in the background when enabled
+Use this for capacity planning and low-balance alerts across all signers
+Using the Data
+Option 1: Quick Health Check
+
+# See all metrics
+curl http://localhost:8080/metrics
+# Check specific method performance
+curl http://localhost:8080/metrics | grep signTransaction
+Option 2: Prometheus + Grafana (Recommended)
+For graphs and alerts, run the full monitoring stack:
+
+
+# from kora root directory
+just run-metrics
+Then visit:
+
+Prometheus: http://localhost:9090 (query metrics)
+Grafana Pre-built Kora dashboard: http://localhost:3000
+Default login: admin/admin (or use the GF_SECURITY_ADMIN_PASSWORD and GF_SECURITY_ADMIN_USER credentials from your .env file)
+Option 3: Your Own Monitoring
+Point any Prometheus-compatible tool at http://your-server:8080/metrics:
+
+Datadog
+New Relic
+CloudWatch
+VictoriaMetrics
+Example Queries (Prometheus)
+
+# Requests per second by method
+rate(kora_http_requests_total[1m])
+# 95th percentile response time
+histogram_quantile(0.95, kora_http_request_duration_seconds_bucket)
+# Error rate
+rate(kora_http_requests_total{status!="200"}[5m])
+# Balance of specific signer by name
+signer_balance_lamports{signer_name="primary_signer"} / 1000000000
+# Balance of specific signer by public key
+signer_balance_lamports{signer_pubkey="4gBe...xyz"} / 1000000000
+# Total balance across all signers
+sum(signer_balance_lamports) / 1000000000
+# Minimum balance across all signers (useful for alerts)
+min(signer_balance_lamports) / 1000000000
+Multi-Signer Monitoring
+When using multiple signers, you can monitor each signer individually or track aggregate metrics:
+
+Individual Signer Metrics
+
+# Check balance of specific signer
+curl http://localhost:8080/metrics | grep 'signer_balance_lamports{signer_name="primary_signer"}'
+# View all signer balances
+curl http://localhost:8080/metrics | grep signer_balance_lamports
+Prometheus Queries for Multi-Signer Setups
+
+# Alert if any signer has low balance (< 0.05 SOL)
+min(signer_balance_lamports) < 50000000
+# Monitor balance distribution across signers
+signer_balance_lamports / on() group_left() sum(signer_balance_lamports)
+# Track signer with lowest balance
+min_over_time(signer_balance_lamports[1h])
+# Count number of healthy signers (> 0.01 SOL)
+count(signer_balance_lamports > 10000000)
+# Average balance across all signers
+avg(signer_balance_lamports) / 1000000000
+Security Note
+The /metrics endpoint is public by default. In production, consider:
+
+Putting it behind a firewall
+Using a separate metrics port
+Adding authentication via reverse proxy
+How Metrics Collection Works
+HTTP Middleware Layer - Intercepts all requests and collects:
+
+Request count by JSON-RPC method and status
+Request duration by method
+Metrics Endpoint - /metrics endpoint exposed automatically when feature is enabled
+
+Handled by MetricsHandlerLayer
+Returns Prometheus-formatted metrics
+Prometheus Scraping - Configured to scrape Kora every 60 seconds (see crates/lib/src/metrics/prometheus.yml)
+
+JSON-RPC API Overview
+Kora implements a JSON-RPC 2.0 interface for gasless transaction processing on Solana.
+
+Protocol
+Standard: JSON-RPC 2.0
+Transport: HTTP POST
+Content-Type: application/json
+Endpoint: http://your-kora-instance/
+Available Methods
+Method	Description
+estimateTransactionFee	Estimates the transaction fee in both lamports and the specified token.
+getBlockhash	Gets the latest blockhash from the Solana RPC that the Kora server is connected to.
+getConfig	Retrieves the current Kora server configuration.
+getPayerSigner	Retrieves the payer signer and payment destination from the Kora server.
+getPaymentInstruction	Creates a payment instruction to append to a transaction for fee payment to the Kora paymaster.
+getSupportedTokens	Retrieves the list of tokens supported for fee payment.
+signAndSendTransaction	Signs a transaction and immediately broadcasts it to the Solana network.
+signTransaction	Signs a transaction with the Kora fee payer if the transaction includes necessary payment to the fee payer without broadcasting it.
+transferTransaction	Creates a token transfer transaction with Kora as the fee payer.
+Request Format
+All requests follow the JSON-RPC 2.0 standard:
+
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "methodName",
+  "params": {}
+}
+Response Format
+Successful responses:
+
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {}
+}
+Error responses:
+
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32600,
+    "message": "Invalid request"
+  }
+}
+
+Kora Full Transaction Flow
+This guide teaches you how to implement a complete gasless transaction flow using Kora RPC, including payment instructions and transaction signing.
+
+Last Updated: 2025-10-31
+
+What You'll Build
+In the Quick Start Guide, you learned how to set up Kora RPC and make basic calls. Now we'll build a complete gasless transaction system that demonstrates Kora's full capabilities. By the end of this guide, you'll have implemented a transaction flow that:
+
+Creates multiple transfer instructions (SPL tokens and SOL)
+Obtains payment instructions from Kora for fee coverage
+Signs transactions with user keys while Kora handles gas fees
+Submits fully-signed transactions to the Solana network
+The final result will be a working gasless transaction system:
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KORA GASLESS TRANSACTION DEMO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1/6] Initializing clients
+  → Kora RPC: http://localhost:8080/
+  → Solana RPC: http://127.0.0.1:8899
+[2/6] Setting up keypairs
+  → Sender: BYJVBqQ2xV9GECc84FeoPQy2DpgoonZQFQu97MMWTbBc
+  → Destination: C8MC9E6nf9Am1rVqdDedDavm53uCJMiSwarEko1aXmny
+  → Kora signer address: 3Z1Ef7YaxK8oUMoi6exf7wYZjZKWJJsrzJXSt1c3qrDE
+[3/6] Creating demonstration instructions
+  → Payment token: 9BgeTKqmFsPVnfYscfM6NvsgmZxei7XfdciShQ6D3bxJ
+  ✓ Token transfer instruction created
+  ✓ SOL transfer instruction created
+  ✓ Memo instruction created
+  → Total: 3 instructions
+[4/6] Estimating Kora fee and assembling payment instruction
+  → Fee payer: 3Z1Ef7Ya...
+  → Blockhash: 7HZUaMqV...
+  ✓ Estimate transaction built
+  ✓ Payment instruction received from Kora
+[5/6] Creating and signing final transaction (with payment)
+  ✓ Final transaction built with payment
+  ✓ Transaction signed by user
+[6/6] Signing transaction with Kora and sending to Solana cluster
+  ✓ Transaction co-signed by Kora
+  ✓ Transaction submitted to network
+  ⏳ Awaiting confirmation...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SUCCESS: Transaction confirmed on Solana
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Transaction signature:
+41hmwmkMfHR5mmhG9sNkjiakwHxpmr1H3Gi3bBL8v5PbsRrH7FhpUT8acHaf2mrPKNVD894dSYXfjp6LfAbVpcCE
+View on explorer:
+https://explorer.solana.com/tx/41hmwmkMfHR5mmhG9sNkjiakwHxpmr1H3Gi3bBL8v5PbsRrH7FhpUT8acHaf2mrPKNVD894dSYXfjp6LfAbVpcCE?cluster=custom&customUrl=http%3A%2F%2Flocalhost%3A8899
+Let's build it step by step!
+
+Prerequisites
+Before starting this tutorial, ensure you have:
+
+Completed the Kora Quick Start Guide - we will use the same testing environment as the quick start guide.
+Node.js (LTS or later)
+Solana CLI v2.2.x or greater
+Familiarity with Solana transactions and SPL tokens
+A running Kora RPC server with configured signers (see Quick Start Guide for instructions)
+Kora Transaction Flow
+Kora enables gasless transactions by acting as a fee payer for your users' transactions. The gasless transaction flow consists of these main steps:
+
+Transaction Creation - Build the user's intended transaction (transfers, program calls, etc.)
+Fee Estimation - Create an estimate transaction to calculate required fees
+Payment Instruction - Get a payment instruction from Kora that specifies the fee amount
+User Signing - User signs the transaction including the payment instruction
+Kora Co-signing - Kora validates payment and co-signs as the fee payer
+Submission - Submit the fully-signed transaction to Solana
+*Note: Kora can be configured to not require payment, but we will be using it to demonstrate the full flow.
+
+Project Setup
+Kora Server Considerations
+Token Allowlist - Only tokens configured in kora.toml can be used for payment - make sure the token defined in your .env is included in your kora.toml allowlist.
+Program Restrictions - Transactions can only interact with whitelisted programs. We have preset the kora.toml to allow interaction with the System Program, Token Program, Compute Unit Program, and Memo program.
+Client Setup
+This guide assumes you've completed the Quick Start and have the demo project set up. If not, please complete that first.
+
+Navigate to your demo client directory:
+
+
+cd kora/examples/getting-started/demo/client
+Note: The demo files are located in the GitHub repository as they require a full development setup.
+
+Implementation
+Before we start running the demo, let's walk through the full demo implementation step by step:
+
+Imports and Configuration
+Our demo starts with the necessary imports and configuration:
+
+
+import { KoraClient } from "@solana/kora";
+import {
+  createKeyPairSignerFromBytes,
+  getBase58Encoder,
+  createNoopSigner,
+  address,
+  getBase64EncodedWireTransaction,
+  partiallySignTransactionMessageWithSigners,
+  Blockhash,
+  Base64EncodedWireTransaction,
+  partiallySignTransaction,
+  TransactionVersion,
+  Instruction,
+  KeyPairSigner,
+  Rpc,
+  SolanaRpcApi,
+  createSolanaRpc,
+  createSolanaRpcSubscriptions,
+  pipe,
+  createTransactionMessage,
+  setTransactionMessageFeePayerSigner,
+  setTransactionMessageLifetimeUsingBlockhash,
+  MicroLamports,
+  appendTransactionMessageInstructions,
+} from "@solana/kit";
+import { getAddMemoInstruction } from "@solana-program/memo";
+import { createRecentSignatureConfirmationPromiseFactory } from "@solana/transaction-confirmation";
+import { updateOrAppendSetComputeUnitLimitInstruction, updateOrAppendSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
+import dotenv from "dotenv";
+import path from "path";
+dotenv.config({ path: path.join(process.cwd(), "..", ".env") });
+const CONFIG = {
+  computeUnitLimit: 200_000,
+  computeUnitPrice: 1_000_000n as MicroLamports,
+  transactionVersion: 0,
+  solanaRpcUrl: "http://127.0.0.1:8899",
+  solanaWsUrl: "ws://127.0.0.1:8900",
+  koraRpcUrl: "http://localhost:8080/",
+};
+We are importing the Kora Client from the Kora SDK and a few types/helpers from Solana Kit library for building transactions.
+
+We are also creating a global configuration object that defines:
+
+Compute Budget - Units and price for transaction prioritization
+Transaction Version - Using V0 for address lookup table support
+RPC Endpoints - Local Solana and Kora RPC servers
+Leave these defaults for now--after the demo, you can experiment with different values to see how they affect the transaction flow.
+
+Utility Functions
+The demo includes a helper function for loading keypairs from environment variables:
+
+
+async function getEnvKeyPair(envKey: string) {
+    if (!process.env[envKey]) {
+        throw new Error(`Environment variable ${envKey} is not set`);
+    }
+    const base58Encoder = getBase58Encoder();
+    const b58SecretEncoded = base58Encoder.encode(process.env[envKey]);
+    return await createKeyPairSignerFromBytes(b58SecretEncoded);
+}
+This function:
+
+Reads base58-encoded private keys from environment variables
+Encodes the private key string to a U8 byte array
+Converts them to keypair signer objects
+Step 1: Initialize Clients
+First, we set up our connection to both Kora and Solana:
+
+
+async function initializeClients() {
+    console.log('\n[1/6] Initializing clients');
+    console.log('  → Kora RPC:', CONFIG.koraRpcUrl);
+    console.log('  → Solana RPC:', CONFIG.solanaRpcUrl);
+    
+    const client = new KoraClient({
+        rpcUrl: CONFIG.koraRpcUrl,
+        // apiKey: process.env.KORA_API_KEY, // Uncomment if authentication is enabled
+        // hmacSecret: process.env.KORA_HMAC_SECRET, // Uncomment if HMAC is enabled
+    });
+    const rpc = createSolanaRpc(CONFIG.solanaRpcUrl);
+    const rpcSubscriptions = createSolanaRpcSubscriptions(CONFIG.solanaWsUrl);
+    const confirmTransaction = createRecentSignatureConfirmationPromiseFactory({ 
+        rpc, 
+        rpcSubscriptions 
+    });
+    
+    return { client, rpc, confirmTransaction };
+}
+This function:
+
+Creates a Kora client instance by passing in our Kora RPC URL.
+Establishes a Solana RPC connection with subscription support (we will use this for sending and confirming transactions to the Solana cluster)
+Sets up transaction confirmation utilities
+Note: Our kora.toml file does not include any authentication, so we don't need to pass in an api key or hmac secret, but we have left the commented out code in for reference.
+
+Step 2: Setup Keys
+Load the required keypairs from environment variables and fetch the Kora signer address:
+
+
+async function setupKeys(client: KoraClient) {
+    console.log('\n[2/6] Setting up keypairs');
+    
+    const testSenderKeypair = await getEnvKeyPair('TEST_SENDER_KEYPAIR');
+    const destinationKeypair = await getEnvKeyPair('DESTINATION_KEYPAIR');
+    const { signer_address } = await client.getPayerSigner();
+    console.log('  → Sender:', testSenderKeypair.address);
+    console.log('  → Destination:', destinationKeypair.address);
+    console.log('  → Kora signer address:', signer_address);
+    
+    return { testSenderKeypair, destinationKeypair, signer_address };
+}
+Here we are using our getEnvKeyPair function to load the keypairs from the environment variables. The keypairs represent:
+
+Sender - The user initiating the transaction and responsible for paying the Kora node in the payment token.
+Destination - The recipient of the transfers.
+We also use the getPayerSigner method to fetch the Kora signer address. This is the address that will be used to sign the transaction with Kora's signature. It is important that we fetch a valid signer from the Kora node and use it consistently throughout our transaction flow.
+
+Step 3: Create Demo Instructions
+Next, we build a set of instructions that that our testSender wants to send to the network. We will be using the Kora Client to build some of these instructions and the @solana/programs library to build others to demonstrate how to use both.
+
+
+async function createInstructions(
+    client: KoraClient, 
+    testSenderKeypair: KeyPairSigner, 
+    destinationKeypair: KeyPairSigner
+) {
+    console.log('\n[3/6] Creating demonstration instructions');
+    
+    const paymentToken = await client.getConfig().then(config => config.validation_config.allowed_spl_paid_tokens[0]);
+    console.log('  → Payment token:', paymentToken);
+    // Create token transfer (will initialize ATA if needed)
+    const transferTokens = await client.transferTransaction({
+        amount: 10_000_000, // 10 USDC (6 decimals)
+        token: paymentToken,
+        source: testSenderKeypair.address,
+        destination: destinationKeypair.address
+    });
+    console.log('  ✓ Token transfer instruction created');
+    // Create SOL transfer
+    const transferSol = await client.transferTransaction({
+        amount: 10_000_000, // 0.01 SOL (9 decimals)
+        token: '11111111111111111111111111111111', // SOL mint address
+        source: testSenderKeypair.address,
+        destination: destinationKeypair.address
+    });
+    console.log('  ✓ SOL transfer instruction created');
+    // Add memo instruction
+    const memoInstruction = getAddMemoInstruction({
+        memo: 'Hello, Kora!',
+    });
+    console.log('  ✓ Memo instruction created');
+    const instructions = [
+        ...transferTokens.instructions,
+        ...transferSol.instructions,
+        memoInstruction
+    ];
+    
+    console.log(`  → Total: ${instructions.length} instructions`);
+    return { instructions, paymentToken };
+}
+There's quite a bit happening here, so let's walk through it step by step:
+
+We use getConfig to get the payment token from Kora's configuration. Because we set up our server, we know there's only one token in the allowlist, so we can access it directly in the 1st position (config.validation_config.allowed_spl_paid_tokens[0]).
+We create a token transfer instruction using the Kora Client's transferTransaction method. This is a helper method that makes it easy to create a token transfer instruction.
+We create a SOL transfer instruction using the Kora Client's transferTransaction method. We are including this here to show how to build SOL transfers using the Kora Client--note that we use the Native SOL mint 11111111111111111111111111111111 to indicate we want to transfer SOL instead of an SPL token transfer.
+We add a memo instruction using the @solana/programs library's getAddMemoInstruction function.
+We combine all the instructions into a single array. We will use this array to build our estimate transaction in the next step.
+Step 4: Get Payment Instruction from Kora
+Create a transaction that will generate a payment instruction to Kora in exchange for the fees required to execute the transaction.
+
+
+async function getPaymentInstruction(
+    client: KoraClient, 
+    instructions: Instruction[],
+    testSenderKeypair: KeyPairSigner,
+    paymentToken: string
+): Promise<{ paymentInstruction: Instruction }> {
+    console.log('\n[4/6] Estimating Kora fee and assembling payment instruction');
+    
+    const { signer_address } = await client.getPayerSigner();
+    const noopSigner = createNoopSigner(address(signer_address));
+    const latestBlockhash = await client.getBlockhash();
+    
+    console.log('  → Fee payer:', signer_address.slice(0, 8) + '...');
+    console.log('  → Blockhash:', latestBlockhash.blockhash.slice(0, 8) + '...');
+    // Create estimate transaction to get payment instruction
+    const estimateTransaction = pipe(
+        createTransactionMessage({ version: CONFIG.transactionVersion as TransactionVersion }),
+        (tx) => setTransactionMessageFeePayerSigner(noopSigner, tx),
+        (tx) => setTransactionMessageLifetimeUsingBlockhash({
+        blockhash: latestBlockhash.blockhash as Blockhash,
+        lastValidBlockHeight: 0n,
+        }, tx),
+        (tx) => updateOrAppendSetComputeUnitPriceInstruction(CONFIG.computeUnitPrice, tx),
+        (tx) => updateOrAppendSetComputeUnitLimitInstruction(CONFIG.computeUnitLimit, tx),
+        (tx) => appendTransactionMessageInstructions(instructions, tx),
+    );
+    const signedEstimateTransaction = await partiallySignTransactionMessageWithSigners(estimateTransaction);
+    const base64EncodedWireTransaction = getBase64EncodedWireTransaction(signedEstimateTransaction);
+    console.log('  ✓ Estimate transaction built');
+    // Get payment instruction from Kora
+    const paymentInstruction = await client.getPaymentInstruction({
+        transaction: base64EncodedWireTransaction,
+        fee_token: paymentToken,
+        source_wallet: testSenderKeypair.address,
+    });
+    console.log('  ✓ Payment instruction received from Kora');
+    
+    return { paymentInstruction: paymentInstruction.payment_instruction };
+}
+The Kora SDK has a helper method getPaymentInstruction that will calculate the exact fees required for the transaction and create a payment transfer instruction. Here's how we're using it:
+
+First, we create an estimateTransaction that includes our desired instructions--this transaction will be simulated on the Kora server to estimate the fees required for the transaction.
+We then partially sign the transaction to get a base64 encoded wire string.
+We pass our base64 encoded wire transaction to the getPaymentInstruction method with the payment token and source of the payment. This will return an Instruction object that we can add to our transaction.
+Key concepts here:
+
+Valid Blockhash - We use the getBlockhash method to get a valid blockhash for our transaction. This is required for estimating the transaction as it will simulate the transaction on the server.
+Noop Signer - Placeholder signer used when building transactions before Kora signs. This will allow us to specify a fee payer in our transaction before we have Kora's signature. For more information on Noop Signers, see Solana Kit Documentation.
+Partial Signing - In order to get our transaction as a base64 encoded wire string (we need this to send the transaction via the Kora RPC), we need to partially sign the transaction. For more information on Partial Signers, see Solana Kit Documentation.
+Step 5: Create and Sign Final Transaction
+Now that we have our payment instruction, we can create a final transaction that includes our original instructions and the payment instruction.
+
+
+async function getFinalTransaction(
+    client: KoraClient, 
+    paymentInstruction: Instruction,
+    testSenderKeypair: KeyPairSigner, 
+    instructions: Instruction[], 
+    signer_address: string
+): Promise<Base64EncodedWireTransaction> {
+    console.log('\n[5/6] Creating and signing final transaction (with payment)');
+    const noopSigner = createNoopSigner(address(signer_address));
+    // Build final transaction with payment instruction
+    const newBlockhash = await client.getBlockhash();
+    const fullTransaction = pipe(
+        createTransactionMessage({ version: CONFIG.transactionVersion as TransactionVersion }),
+        (tx) => setTransactionMessageFeePayerSigner(noopSigner, tx),
+        (tx) => setTransactionMessageLifetimeUsingBlockhash({
+        blockhash: newBlockhash.blockhash as Blockhash,
+        lastValidBlockHeight: 0n,
+        }, tx),
+        (tx) => updateOrAppendSetComputeUnitPriceInstruction(CONFIG.computeUnitPrice, tx),
+        (tx) => updateOrAppendSetComputeUnitLimitInstruction(CONFIG.computeUnitLimit, tx),
+        (tx) => appendTransactionMessageInstructions([...instructions, paymentInstruction], tx),
+    );
+    console.log('  ✓ Final transaction built with payment');
+    // Sign with user keypair
+    const signedFullTransaction = await partiallySignTransactionMessageWithSigners(fullTransaction);
+    const userSignedTransaction = await partiallySignTransaction([testSenderKeypair.keyPair], signedFullTransaction);
+    const base64EncodedWireFullTransaction = getBase64EncodedWireTransaction(userSignedTransaction);
+    console.log('  ✓ Transaction signed by user');
+    
+    return base64EncodedWireFullTransaction;
+}
+We use the same pipe function to assemble our transaction. Our final transaction includes:
+
+Our original instructions
+The payment instruction
+A fresh blockhash
+The same noop signer as previously used to build the estimate transaction
+We then call the same partiallySignTransactionMessageWithSigners function to get a base64 encoded wire string of the transaction. This time, however, we also run partiallySignTransaction to sign the transaction with our testSenderKeypair. Though our Kora node is paying the network fees, our testSender still needs to sign to authorize the token payment and the other transfer instructions we created. For Kora nodes that do not require payment, certain instructions may not require this signing step. Finally, we return the base64 encoded wire string of the transaction.
+
+Step 6: Submit Transaction
+Finally, we need to get the Kora node to sign the transaction so we can send a fully signed transaction to the network. We do this by calling the signTransaction method on the Kora client.
+
+
+async function submitTransaction(
+    client: KoraClient, 
+    rpc: Rpc<SolanaRpcApi>, 
+    confirmTransaction: ReturnType<typeof createRecentSignatureConfirmationPromiseFactory>, 
+    signedTransaction: Base64EncodedWireTransaction, 
+    signer_address: string
+) {
+    console.log('\n[6/6] Signing transaction with Kora and sending to Solana cluster');
+    
+    // Get Kora's signature
+    const { signed_transaction } = await client.signTransaction({
+        transaction: signedTransaction,
+        signer_key: signer_address
+    });
+    console.log('  ✓ Transaction co-signed by Kora');
+    // Submit to Solana network
+    const signature = await rpc.sendTransaction(signed_transaction as Base64EncodedWireTransaction, {
+        encoding: 'base64'
+    }).send();
+    console.log('  ✓ Transaction submitted to network');
+    
+    console.log('  ⏳ Awaiting confirmation...');
+    await confirmTransaction({
+        commitment: 'confirmed',
+        signature,
+        abortSignal: new AbortController().signal
+    });
+    
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('SUCCESS: Transaction confirmed on Solana');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('\nTransaction signature:');
+    console.log(signature);
+    
+    return signature;
+}
+Here we are doing three things:
+
+We call the signTransaction method on the Kora client to get the Kora node to sign the transaction. The node will introspect the transaction to ensure the payment is sufficient and then sign the transaction. Note: some Kora nodes may enable signTransaction that do not require payment. You can check your node's configuration to see if this is enabled by running getConfig().
+We send the fully signed transaction to the Solana network using the Solana RPC client.
+We wait for the transaction to be confirmed on the network.
+Main Orchestration Function
+The main function ties everything together and calls each of our functions in sequence:
+
+
+async function main() {
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('KORA GASLESS TRANSACTION DEMO');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+    try {
+        // Step 1: Initialize clients
+        const { client, rpc, confirmTransaction } = await initializeClients();
+        
+        // Step 2: Setup keys
+        const { testSenderKeypair, destinationKeypair, signer_address } = await setupKeys(client);
+        
+        // Step 3: Create demo instructions
+        const { instructions, paymentToken } = await createInstructions(client, testSenderKeypair, destinationKeypair);
+        
+        // Step 4: Get payment instruction from Kora
+        const { paymentInstruction } = await getPaymentInstruction(client, instructions, testSenderKeypair, paymentToken);
+        
+        // Step 5: Create and partially sign final transaction
+        const finalSignedTransaction = await getFinalTransaction(
+            client,  
+            paymentInstruction, 
+            testSenderKeypair, 
+            instructions, 
+            signer_address
+        );
+        
+        // Step 6: Get Kora's signature and submit to Solana cluster
+        await submitTransaction(client, rpc, confirmTransaction, finalSignedTransaction, signer_address);
+    } catch (error) {
+        console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('ERROR: Demo failed');
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('\nDetails:', error);
+        process.exit(1);
+    }
+}
+Running the Full Demo
+To run the complete gasless transaction demo:
+
+1. Ensure Prerequisites
+Set up three terminal windows:
+
+Start your local test validator:
+
+solana-test-validator -r
+Start your Kora RPC server (from the examples/getting-started/demo/server directory):
+
+kora rpc start --signers-config signers.toml
+Initialize your environment (from the examples/getting-started/demo/client directory):
+
+pnpm init-env
+2. Run the Demo
+
+# From the client directory
+pnpm full-demo
+3. Expected Output
+You should see the step-by-step execution with a successful transaction at the end. The transaction will:
+
+Transfer tokens from sender to destination
+Transfer SOL from sender to destination
+Include a "Hello, Kora!" memo message
+Pay fees to the Kora node operator in your configured SPL token
+Have transaction gas fees paid by the Kora node operator
+Recap: Understanding the Flow
+Let's review what happens in this demonstration:
+
+User Intent - User assembled a transaction that included a variety of instructions that they wanted to execute.
+Fee Estimation - Kora calculated the transaction cost in the user's preferred token and created a payment instruction.
+Transaction Assembly - User assembled a final transaction that included the user's intended instructions and the Kora payment instruction.
+Transaction Signing - User partially signed the transaction with their keypair and sent to the Kora node for signing after verifying the payment was sufficient.
+Atomic Execution - User sends transaction to the Solana and everything happens in a single transaction:
+User's intended transfers execute
+Payment for fees transfers to Kora
+Kora pays the Solana network fees and signs the transaction
+And like that, users do not need to hold SOL to pay for gas fees--they can pay for everything in the tokens they already hold!
+
+Troubleshooting
+Common Issues
+Transaction Validation Fails
+
+Verify all programs are whitelisted in kora.toml
+Check that token mints are in allowed_spl_paid_tokens
+Ensure transaction doesn't exceed max_allowed_lamports
+Generating Payment Instruction Fails
+
+Confirm the estimate transaction has a fresh blockhash for simulation
+Verify Kora's payment address has initialized ATAs
+Check that the payment token is properly configured
+Signature Verification Fails
+
+Ensure all required signers are included (Kora and any signers required for token payments or other instructions included in your transaction)
+Verify the transaction hasn't been modified after signing
+Check that keypairs are loaded correctly
+Wrap Up
+Congratulations! You've successfully implemented a complete gasless transaction flow with Kora.
+
+Kora makes it possible to provide users with a seamless Web3 experience where they never need to worry about gas fees or holding SOL. Whether you're building a NeoBank, gaming platform, or liquid staking platform, Kora's gasless transactions remove a major barrier to user adoption.
+
+Additional Resources
+Need help? Ask questions on Solana Stack Exchange with a Kora tag
+Kora Configuration Guide - Detailed configuration options
+Signers Guide - Managing different signer types
+API Reference - Complete RPC method documentation
+GitHub Repository - Source code and examples
+Kora SDK - SDK for interacting with Kora RPC endpoints
+
+
+x402 Integration with Kora
+Learn how to integrate the x402 payment protocol with Kora's gasless Solana signing infrastructure, enabling micropayments for API access with zero gas fees.
+
+What You'll Build
+This guide walks you through implementing a complete x402 (HTTP 402 Payment Required) integration with Kora, Solana gasless signing infrastructure. By the end, you'll have a working system where:
+
+APIs can charge micropayments for access using the x402 protocol
+Users pay in USDC without needing SOL for gas fees
+Kora handles all transaction fees as the gasless facilitator
+Payments are settled atomically on Solana blockchain
+The final result will be a fully functional payment-protected API:
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+X402 + KORA PAYMENT FLOW DEMONSTRATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1/4] Initializing payment signer
+  → Network: solana-devnet
+  → Payer address: BYJV...TbBc
+  ✓ Signer initialized
+[2/4] Attempting to access protected endpoint without payment
+  → GET http://localhost:4021/protected
+  → Response: 402 Payment Required
+  ✅ Status code: 402
+[3/4] Accessing protected endpoint with x402 payment
+  → Using x402 fetch wrapper
+  → Payment will be processed via Kora facilitator
+  → Transaction submitted to Solana
+  ✅ Status code: 200
+[4/4] Processing response data
+  ✓ Payment response decoded
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SUCCESS: Payment completed and API accessed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Response Data:
+{
+    "data": {
+        "message": "Protected endpoint accessed successfully",
+        "timestamp": "2025-09-25T20:14:04.242Z"
+    },
+    "status_code": 200,
+    "payment_response": {
+        "transaction": "5ULZpdeThaMAy6hcEGfAoMFqJqPpCtxdCxb6JYUV6nA4x8Lk2hKEuzofGUPoe1pop6BdWMSmF5oRPrXsbdWmpruf",
+        "success": true,
+        "network": "solana-devnet"
+    }
+}
+What is x402?
+x402 is an open payment standard that enables seamless micropayments for API access. Instead of traditional subscription models or API keys, x402 allows servers to charge for individual API calls, creating true pay-per-use infrastructure.
+
+Key benefits of x402:
+
+Instant Micropayments: Pay fractions of a cent per API call
+Enable AI agents to pay for API calls: Pay for API calls with AI agents
+No Subscriptions: Users only pay for what they use
+Web3 Payments: Transparent, verifiable payments on-chain
+Standard HTTP: Works with existing web infrastructure using an HTTP 402 status code when payment is required
+Servers using x402 to require micropayments for API access will return an HTTP 402 status code when payment is required. To access protected endpoints, clients must pass a valid payment to the server in a X-PAYMENT header. x402 relies on "Facilitators" to verify and settle transactions so that servers don't need to directly interact with blockchain infrastructure.
+
+Understanding Facilitators
+Facilitators are a crucial component in the x402 ecosystem. They act as specialized services that abstract blockchain payments on behalf of API servers.
+
+What Facilitators Do:
+
+Verify Payments: Validate that client's payment payloads are correctly formed and sufficient
+Abstract Complexity: Remove the need for servers to directly interact with blockchain infrastructure (signing and paying network fees)
+Settle Transactions: Submit validated transactions to Solana (or other networks)
+In our demo, we create a facilitator that leverages Kora to verify and settle transactions (more details below).
+
+What is Kora?
+Kora is a Solana signer node that provides signing and gasless transaction services. It enables applications to abstract away gas fees, allowing users to pay transaction costs in tokens other than SOL, or have fees sponsored entirely.
+
+Key features of Kora:
+
+Gasless Transactions: Users don't need SOL to execute transactions
+Fee Abstraction: Pay fees in USDC or other SPL tokens
+JSON-RPC Interface: Simple HTTP API for transaction handling
+Flexible Signers: Support for multiple signer backends (memory, Vault, Turnkey, Privy)
+Policy Engine: Granular control over transaction validation and fee policies
+In the context of x402, Kora serves as the perfect backend for facilitators: it handles network fees, it signs transactions, and it validates transactions. Because Kora introspects every transaction before signing, Kora nodes offer an additional layer of security and more finite control of transaction validation and fee policies.
+
+Architecture Overview
+Our x402 + Kora integration consists of four interconnected components with a complete request/response cycle:
+
+Complete Payment Flow:
+
+Client requests protected resource → API returns 402 Payment Required
+Client creates payment transaction with x402 fetch wrapper (which assembles a Solana transaction with a payment instruction)
+Client sends payment to Facilitator for verification
+Facilitator validates via Kora, which signs and submits to Solana
+Transaction confirmed on-chain, Facilitator notifies API
+API returns protected content with payment receipt to Client
+Component Breakdown
+Kora RPC Server (Port 8080)
+
+Core gasless transaction service
+Handles transaction signing as fee payer
+Validates transactions against configured policies
+Facilitator Wrapper/Proxy Server (Port 3000)
+
+Adapts Kora to x402 protocol
+Implements /verify, /settle, and /supported endpoints
+Translates between x402 and Kora data formats
+Protected API (Port 4021)
+
+Demo API server with payment-protected endpoints
+Uses x402-express middleware for payment handling
+Returns data only after successful payment
+Client Application
+
+Demonstrates x402 fetch wrapper usage
+Signs transactions with user's private key
+The multi-component approach might seem complex, but it mirrors real-world production systems where payment processing, API serving, and client applications are separate concerns.
+
+Prerequisites
+Before starting, ensure you have:
+
+Rust (latest stable version)
+Node.js (LTS or later)
+Kora CLI (latest version - cargo install kora-cli)
+pnpm (latest version)
+Basic understanding of Solana transactions and SPL tokens
+Project Setup
+Step 1: Clone and Build Kora
+
+# Clone the repository
+git clone https://github.com/solana-foundation/kora.git
+cd kora
+# Checkout the main branch
+git checkout main
+# Build and install Kora
+just install
+This installs the kora binary to your system, which we'll use to run the RPC server.
+
+Step 2: Navigate to Demo Directory
+
+cd examples/x402/demo
+Step 3: Install Dependencies
+Install Node.js dependencies for all demo components:
+
+
+# Install dependencies for all components (facilitator, API, and client)
+pnpm run install:all
+This script installs dependencies for:
+
+The facilitator wrapper service
+The protected API server
+The client demonstration app
+Step 4: Configure Environment
+The demo includes a .env.example file with the required environment variables. First, let's set up the basic configuration:
+
+
+# Copy the example environment file
+cp .env.example .env
+Now you need to generate or provide keypairs for the demo. Run the following command to generate the keypairs:
+
+
+pnpm run setup
+This will generate the keypairs and add them to the .env file:
+
+KORA_SIGNER_ADDRESS - The address of the Kora signer
+KORA_SIGNER_PRIVATE_KEY - The private key of the Kora signer
+PAYER_ADDRESS - The address of the payer who will pay to access the protected API
+PAYER_PRIVATE_KEY - The private key of the payer
+Step 5: Update Configuration Files
+kora.toml
+The kora/kora.toml file configures the Kora RPC server. You should not need to make any changes to this file, but you can verify the following settings:
+
+Payment Token: Ensure the Devnet USDC mint is in the allowlist:
+
+allowed_tokens = [
+    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU", # USDC devnet
+]
+API Authentication: The demo uses an API key for Kora access. This should match the KORA_API_KEY in the .env file:
+
+[kora.auth]
+api_key = "kora_facilitator_api_key_example"
+Fee Payer Policy: Configured to restrict signing unwanted transactions using granular controls:
+
+[validation.fee_payer_policy.system]
+allow_transfer = false
+allow_assign = false
+allow_create_account = false
+allow_allocate = false
+[validation.fee_payer_policy.system.nonce]
+allow_initialize = false
+allow_advance = false
+allow_authorize = false
+allow_withdraw = false
+[validation.fee_payer_policy.spl_token]
+allow_transfer = false
+allow_burn = false
+allow_close_account = false
+allow_approve = false
+allow_revoke = false
+allow_set_authority = false
+allow_mint_to = false
+allow_initialize_mint = false
+allow_initialize_account = false
+allow_initialize_multisig = false
+allow_freeze_account = false
+allow_thaw_account = false
+[validation.fee_payer_policy.token_2022]
+allow_transfer = false
+allow_burn = false
+allow_close_account = false
+allow_approve = false
+allow_revoke = false
+allow_set_authority = false
+allow_mint_to = false
+allow_initialize_mint = false
+allow_initialize_account = false
+allow_initialize_multisig = false
+allow_freeze_account = false
+allow_thaw_account = false
+Allowed Programs: Ensure the system program, token program, associated token program, and compute budget program are in the allowlist:
+
+allowed_programs = [
+    "11111111111111111111111111111111",             # System Program
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",  # Token Program
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", # Associated Token Program
+    "ComputeBudget111111111111111111111111111111",  # Compute Budget Program
+]
+signers.toml
+The kora/signers.toml file configures the Kora signer. You should not need to make any changes to this file, but you can verify the following settings:
+
+Signer Environment Variable: Ensure the signer environment variable, private_key_env is set to KORA_SIGNER_PRIVATE_KEY (matching the env variable name in the .env file).
+
+[[signers]]
+name = "main_signer"
+type = "memory"
+private_key_env = "KORA_SIGNER_PRIVATE_KEY"
+weight = 1
+Step 6: Fund Accounts
+Devnet SOL
+Our Kora signer address will need SOL for paying transaction fees. You can airdrop devnet SOL to the Kora signer address using the Solana CLI:
+
+
+# Airdrop SOL
+solana airdrop 1 <KORA_SIGNER_ADDRESS> --url devnet
+Alternatively, you can use the Solana Faucet to airdrop SOL to the Kora signer address.
+
+Devnet USDC
+Your PAYER_ADDRESS is set in the .env file will need USDC for paying transaction fees.
+
+Get Devnet USDC from Circle's Faucet. Make sure to select "Solana Devnet" and use your PAYER_ADDRESS to request USDC.
+
+Running the Demo
+You'll need four terminal windows to run all components from the examples/x402/demo directory.
+
+Terminal 1: Start Kora RPC Server
+Run the following command to start the Kora RPC server:
+
+
+pnpm run start:kora
+You should see a series of logs indicating that the Kora RPC server is running, including:
+
+
+INFO kora_lib::rpc_server::server: RPC server started on 0.0.0.0:8080, port 8080
+Terminal 2: Start Facilitator
+Run the following command to start the Facilitator:
+
+
+pnpm run start:facilitator
+You should see:
+
+
+Server listening at http://localhost:3000
+Terminal 3: Start Protected API
+Run the following command to start the Protected API:
+
+
+pnpm run start:api
+You should see:
+
+
+Server listening at http://localhost:4021
+Terminal 4: Run Client Demo
+
+pnpm run demo
+Understanding the Implementation
+Here's what happens during a successful payment flow:
+
+Client Request → API returns 402 with payment requirements
+Payment Creation → Client creates Solana transaction with payment
+Payment Submission → Client sends request to server with payment in the X-PAYMENT header
+Verification → Facilitator verifies via Kora's signTransaction
+Settlement → Facilitator settles via Kora's signAndSendTransaction (sending the payment transaction to Solana)
+Access Granted → Facilitator returns transaction signature and API returns protected content with payment receipt
+Transaction FlowSource: x402 GitHub
+
+Let's dive into how each component works:
+
+Kora RPC (Port 8080): Handles gasless transaction signing
+Facilitator (Port 3000): Bridges x402 protocol to Kora
+Protected API (Port 4021): Your monetized API endpoint
+Client: Demonstrates automatic payment flow
+The Facilitator Wrapper/Proxy Server
+The Facilitator runs on port 3000. This is the server that handles communication with Solana (in our case, via Kora). It is used to verify and settle x402 payments.
+
+The facilitator (facilitator/src/facilitator.ts) is the bridge between x402 protocol and Kora RPC. It implements three key endpoints:
+
+1. /verify Endpoint
+This endpoint:
+
+Receives an x402 payment payload from the Protected API server
+Extracts the Solana transaction using x402 helpers
+Uses Kora's signTransaction to verify validity without broadcasting
+Returns verification status, isValid
+2. /settle Endpoint
+This endpoint:
+
+Receives the the x402 payment payload after the payment has been verified by the /verify endpoint
+Uses Kora's signAndSendTransaction to sign and broadcast the transaction
+Returns the transaction signature as proof of settlement
+3. /supported Endpoint
+This endpoint effectively advertises the facilitator's capabilities, including:
+
+Supported x402 version
+Payment scheme (exact payments)
+Network (solana-devnet)
+Fee payer address which we fetch from Kora using the getPayerSigner method
+The Protected API
+The API server (api/src/api.ts) uses x402-express middleware to protect endpoints:
+
+
+app.use(
+  paymentMiddleware(
+    KORA_PAYER_ADDRESS,           // Where payments should go
+    {
+      "GET /protected": {
+        price: "$0.0001",         // Price in USD
+        network: NETWORK,         // solana-devnet
+      },
+    },
+    {
+      url: FACILITATOR_URL,       // Our facilitator wrapper
+    }
+  ),
+);
+The middleware:
+
+Intercepts requests to protected endpoints (in our case, the /protected endpoint)
+Returns 402 status if payment is missing
+Validates and handles payments via the facilitator
+Allows access after successful payment
+Though we are using Express, the x402 library includes middleware support for many common frameworks. See the x402 TypeScript Packages for more information.
+
+The Client Application
+The client (client/src/index.ts) demonstrates automatic how x402 works by sending a request with a standard fetch call and then retrying the request with the payment wrapper:
+
+
+// Create a signer from private key
+const payer = await createSigner(NETWORK, PAYER_PRIVATE_KEY);
+// Wrap fetch with x402 payment capabilities
+const fetchWithPayment = wrapFetchWithPayment(fetch, payer);
+// First attempt: Regular fetch (will fail with 402)
+const expect402Response = await fetch(PROTECTED_API_URL);
+console.log(`Status: ${expect402Response.status}`); // 402
+// Second attempt: Fetch with payment wrapper (succeeds)
+const response = await fetchWithPayment(PROTECTED_API_URL);
+console.log(`Status: ${response.status}`); // 200
+The x402 fetch wrapper:
+
+Detects 402 responses
+Automatically creates payment transaction based on the protected API's payment requirements
+Signs with user's private key
+Sends payment to the facilitator for verification and processing
+Retries request with payment proof in the x-payment-response header
+Returns successful response
+Wrapping Up
+Congratulations! 🔥 You've successfully implemented a complete x402 payment flow with Kora's gasless infrastructure. This demonstration shows how:
+
+x402 Protocol enables frictionless API monetization through micropayments
+Kora RPC works as a facilitator for x402 payments by verifying and settling transactions
+Users can pay for API access without holding SOL or managing gas fees
+This architecture creates a powerful foundation for:
+
+AI Agent marketplaces
+Pay-per-use APIs
+Micropayment content platforms
+Usage-based SaaS pricing
+Any service requiring instant, verifiable payments
+The combination of x402 and Kora bring the power of Solana to traditional web infrastructure.
+
+Keep Building
+Customize Pricing: Modify the API to charge different amounts for different endpoints
+Add Multiple Tokens: Configure Kora to accept various SPL tokens for payment
+Production Deployment: Deploy to mainnet with production signers (Vault, Turnkey, or Privy)
+Build Your Own API: Create a real service that monetizes through x402 payments
+Additional Resources
+x402 Protocol
+x402 Documentation
+x402 GitHub
+x402 TypeScript SDK
+Kora
+Kora Configuration Guide
+Kora Signers Guide
+Kora API Reference
+Solana
+Solana Documentation
+SPL Token Program
+Support
+Need help?
+
+Ask questions on Solana Stack Exchange with kora and x402 tags
+Open issues on the Kora GitHub repository

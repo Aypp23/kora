@@ -1,0 +1,4927 @@
+---
+title: Solana RPC Methods
+seoTitle: "Solana RPC Methods: HTTP & Websockets"
+hideTableOfContents: false
+h1: Solana RPC Methods & Documentation
+---
+
+Interact with Solana nodes directly with the JSON RPC API via the HTTP and
+Websocket methods.
+
+## Configuring State Commitment
+
+For preflight checks and transaction processing, Solana nodes choose which bank
+state to query based on a commitment requirement set by the client. The
+commitment describes how finalized a block is at that point in time. When
+querying the ledger state, it's recommended to use lower levels of commitment to
+report progress and higher levels to ensure the state will not be rolled back.
+
+In descending order of commitment (most finalized to least finalized), clients
+may specify:
+
+- `finalized` - the node will query the most recent block confirmed by
+  supermajority of the cluster as having reached maximum lockout, meaning the
+  cluster has recognized this block as finalized
+- `confirmed` - the node will query the most recent block that has been voted on
+  by supermajority of the cluster.
+  - It incorporates votes from gossip and replay.
+  - It does not count votes on descendants of a block, only direct votes on that
+    block.
+  - This confirmation level also upholds "optimistic confirmation" guarantees in
+    release 1.3 and onwards.
+- `processed` - the node will query its most recent block. Note that the block
+  may still be skipped by the cluster.
+
+For processing many dependent transactions in series, it's recommended to use
+`confirmed` commitment, which balances speed with rollback safety. For total
+safety, it's recommended to use `finalized` commitment.
+
+### Default Commitment
+
+If commitment configuration is not provided, the node will
+[default to `finalized` commitment](https://github.com/anza-xyz/agave/blob/aa0922d6845e119ba466f88497e8209d1c82febc/sdk/src/commitment_config.rs#L199-L203)
+
+Only methods that query bank state accept the commitment parameter. They are
+indicated in the API Reference below.
+
+## RpcResponse Structure
+
+Many methods that take a commitment parameter return an RpcResponse JSON object
+comprised of two parts:
+
+- `context` : An RpcResponseContext JSON structure including a `slot` field at
+  which the operation was evaluated.
+- `value` : The value returned by the operation itself.
+
+## Parsed Responses
+
+Some methods support an `encoding` parameter, and can return account or
+instruction data in parsed JSON format if `"encoding":"jsonParsed"` is requested
+and the node has a parser for the owning program. Solana nodes currently support
+JSON parsing for the following native and SPL programs:
+
+| Program                      | Account State | Instructions |
+| ---------------------------- | ------------- | ------------ |
+| Address Lookup               | v1.15.0       | v1.15.0      |
+| BPF Loader                   | n/a           | stable       |
+| BPF Upgradeable Loader       | stable        | stable       |
+| Config                       | stable        |              |
+| SPL Associated Token Account | n/a           | stable       |
+| SPL Memo                     | n/a           | stable       |
+| SPL Token                    | stable        | stable       |
+| SPL Token 2022               | stable        | stable       |
+| Stake                        | stable        | stable       |
+| Vote                         | stable        | stable       |
+
+The list of account parsers can be found
+[here](https://github.com/solana-labs/solana/blob/master/account-decoder/src/parse_account_data.rs),
+and instruction parsers
+[here](https://github.com/solana-labs/solana/blob/master/transaction-status/src/parse_instruction.rs).
+
+## Filter criteria
+
+Some methods support providing a `filters` object to enable pre-filtering the
+data returned within the RpcResponse JSON object. The following filters exist:
+
+- `memcmp: object` - compares a provided series of bytes with program account
+  data at a particular offset. Fields:
+
+  - `offset: usize` - offset into program account data to start comparison
+  - `bytes: string` - data to match, as encoded string
+  - `encoding: string` - encoding for filter `bytes` data, either "base58" or
+    "base64". Data is limited in size to 128 or fewer decoded bytes.<br />
+    **NEW: This field, and base64 support generally, is only available in
+    solana-core v1.14.0 or newer. Please omit when querying nodes on earlier
+    versions**
+
+- `dataSize: u64` - compares the program account data length with the provided
+  data size
+
+---
+title: Data Structures as JSON
+hideTableOfContents: false
+h1: Common JSON Data Structures for Solana RPC Methods
+---
+
+Various Solana RPC methods will return more complex responses as structured JSON
+objects, filled with specific keyed values.
+
+The most common of these JSON data structures include:
+
+- [transactions](#transactions)
+- [inner instructions](#inner-instructions)
+- [token balances](#token-balances)
+
+## Transactions
+
+Transactions are quite different from those on other blockchains. Be sure to
+review [Anatomy of a Transaction](/docs/core/transactions) to learn about
+transactions on Solana.
+
+### JSON
+
+The JSON structure of a transaction is defined as follows:
+
+<Accordions>
+<Accordion title="Reference">
+
+```shell
+"transaction": {
+  "message": {
+    "accountKeys": [
+      "EF3cbGuhJus5mCdGZkVz7GQce7QHbswBhZu6fmK9zkCR",
+      "4LAyP5B5jNyNm7Ar2dG8sNipEiwTMEyCHd1iCHhhXYkY",
+      "11111111111111111111111111111111"
+    ],
+    "header": {
+      "numReadonlySignedAccounts": 0,
+      "numReadonlyUnsignedAccounts": 1,
+      "numRequiredSignatures": 1
+    },
+    "instructions": [
+      {
+        "accounts": [
+          0,
+          1
+        ],
+        "data": "3Bxs411Dtc7pkFQj",
+        "programIdIndex": 2,
+        "stackHeight": null
+      }
+    ],
+    "recentBlockhash": "6pw7JBwq9tb5GHiBQgVY6RAp5otbouwYvEc1kbbxKFec"
+  },
+  "signatures": [
+    "2M8mvwhtxyz3vAokXESVeR9FQ4t9QQxF5ek6ENNBBHVkW5XyZvJVK5MQej5ccwTZH6iWBJJoZ2CcizBs89pvpPBh"
+  ]
+}
+```
+
+</Accordion>
+</Accordions>
+
+- `message: <object>` - Defines the content of the transaction.
+  - `accountKeys: <array[string]>` - List of base-58 encoded public keys used by
+    the transaction, including by the instructions and for signatures. The first
+    `message.header.numRequiredSignatures` public keys must sign the
+    transaction.
+  - `header: <object>` - Details the account types and signatures required by
+    the transaction.
+    - `numRequiredSignatures: <number>` - The total number of signatures
+      required to make the transaction valid. The signatures must match the
+      first `numRequiredSignatures` of `message.accountKeys`.
+    - `numReadonlySignedAccounts: <number>` - The last
+      `numReadonlySignedAccounts` of the signed keys are read-only accounts.
+      Programs may process multiple transactions that load read-only accounts
+      within a single PoH entry, but are not permitted to credit or debit
+      lamports or modify account data. Transactions targeting the same
+      read-write account are evaluated sequentially.
+    - `numReadonlyUnsignedAccounts: <number>` - The last
+      `numReadonlyUnsignedAccounts` of the unsigned keys are read-only accounts.
+  - `recentBlockhash: <string>` - A base-58 encoded hash of a recent block in
+    the ledger used to prevent transaction duplication and to give transactions
+    lifetimes.
+  - `instructions: <array[object]>` - List of program instructions that will be
+    executed in sequence and committed in one atomic transaction if all succeed.
+    - `programIdIndex: <number>` - Index into the `message.accountKeys` array
+      indicating the program account that executes this instruction.
+    - `accounts: <array[number]>` - List of ordered indices into the
+      `message.accountKeys` array indicating which accounts to pass to the
+      program.
+    - `data: <string>` - The program input data encoded in a base-58 string.
+  - `addressTableLookups: <array[object]|undefined>` - List of address table
+    lookups used by a transaction to dynamically load addresses from on-chain
+    address lookup tables. Undefined if `maxSupportedTransactionVersion` is not
+    set.
+    - `accountKey: <string>` - base-58 encoded public key for an address lookup
+      table account.
+    - `writableIndexes: <array[number]>` - List of indices used to load
+      addresses of writable accounts from a lookup table.
+    - `readonlyIndexes: <array[number]>` - List of indices used to load
+      addresses of readonly accounts from a lookup table.
+- `signatures: <array[string]>` - A list of base-58 encoded signatures applied
+  to the transaction. The list is always of length
+  `message.header.numRequiredSignatures` and not empty. The signature at index
+  `i` corresponds to the public key at index `i` in `message.accountKeys`. The
+  first one is used as the
+  [transaction id](/docs/references/terminology#transaction-id).
+
+### JSON Parsed
+
+The JSON parsed structure of a transaction follows a similar structure to the
+regular JSON format, with additional parsing of account and instruction
+information:
+
+<Accordions>
+<Accordion title="Reference">
+
+```shell
+"transaction": {
+  "message": {
+    "accountKeys": [
+      {
+        "pubkey": "EF3cbGuhJus5mCdGZkVz7GQce7QHbswBhZu6fmK9zkCR",
+        "signer": true,
+        "source": "transaction",
+        "writable": true
+      },
+      {
+        "pubkey": "4LAyP5B5jNyNm7Ar2dG8sNipEiwTMEyCHd1iCHhhXYkY",
+        "signer": false,
+        "source": "transaction",
+        "writable": true
+      },
+      {
+        "pubkey": "11111111111111111111111111111111",
+        "signer": false,
+        "source": "transaction",
+        "writable": false
+      }
+    ],
+    "instructions": [
+      {
+        "parsed": {
+          "info": {
+            "destination": "4LAyP5B5jNyNm7Ar2dG8sNipEiwTMEyCHd1iCHhhXYkY",
+            "lamports": 100000000,
+            "source": "EF3cbGuhJus5mCdGZkVz7GQce7QHbswBhZu6fmK9zkCR"
+          },
+          "type": "transfer"
+        },
+        "program": "system",
+        "programId": "11111111111111111111111111111111",
+        "stackHeight": null
+      }
+    ],
+    "recentBlockhash": "6pw7JBwq9tb5GHiBQgVY6RAp5otbouwYvEc1kbbxKFec"
+  },
+  "signatures": [
+    "2M8mvwhtxyz3vAokXESVeR9FQ4t9QQxF5ek6ENNBBHVkW5XyZvJVK5MQej5ccwTZH6iWBJJoZ2CcizBs89pvpPBh"
+  ]
+}
+```
+
+</Accordion>
+</Accordions>
+
+- `message: <object>` - Defines the content of the transaction.
+  - `accountKeys: <array[object]>` - List of account information used by the
+    transaction.
+    - `pubkey: <string>` - The base-58 encoded public key of the account.
+    - `signer: <boolean>` - Indicates if the account is a required transaction
+      signer.
+    - `writable: <boolean>` - Indicates if the account is writable.
+    - `source: <string>` - Source of the account (transaction or lookup table).
+  - `recentBlockhash: <string>` - A base-58 encoded hash of a recent block in
+    the ledger used to prevent transaction duplication and to give transactions
+    lifetimes.
+  - `instructions: <array[object]>` - List of parsed program instructions.
+    - `program: <string>` - The name of the program being called.
+    - `programId: <string>` - The base-58 encoded public key of the program.
+    - `stackHeight: <number|null>` - The stack height of the instruction.
+    - `parsed: <object>` - Program-specific parsed data.
+      - `type: <string>` - The type of instruction (e.g., "transfer").
+      - `info: <object>` - Parsed instruction information specific to the
+        program and instruction type.
+- `signatures: <array[string]>` - A list of base-58 encoded signatures applied
+  to the transaction.
+
+## Transaction Status Metadata
+
+<Accordions>
+<Accordion title="Reference">
+
+```json
+{
+  "meta": {
+    "err": null,
+    "fee": 5000,
+    "innerInstructions": [],
+    "logMessages": [],
+    "postBalances": [499998932500, 26858640, 1, 1, 1],
+    "postTokenBalances": [],
+    "preBalances": [499998937500, 26858640, 1, 1, 1],
+    "preTokenBalances": [],
+    "rewards": null,
+    "status": {
+      "Ok": null
+    }
+  }
+}
+```
+
+</Accordion>
+</Accordions>
+
+- `err: <object|null>` - Error if transaction failed, null if transaction
+  succeeded.
+  [TransactionError definitions](https://github.com/solana-labs/solana/blob/c0c60386544ec9a9ec7119229f37386d9f070523/sdk/src/transaction/error.rs#L13)
+- `fee: <u64>` - fee this transaction was charged, as u64 integer
+- `preBalances: <array>` - array of u64 account balances from before the
+  transaction was processed
+- `postBalances: <array>` - array of u64 account balances after the transaction
+  was processed
+- `innerInstructions: <array|null>` - List of
+  [inner instructions](/docs/rpc/json-structures#inner-instructions) or `null`
+  if inner instruction recording was not enabled during this transaction
+- `preTokenBalances: <array|undefined>` - List of
+  [token balances](/docs/rpc/json-structures#token-balances) from before the
+  transaction was processed or omitted if token balance recording was not yet
+  enabled during this transaction
+- `postTokenBalances: <array|undefined>` - List of
+  [token balances](/docs/rpc/json-structures#token-balances) from after the
+  transaction was processed or omitted if token balance recording was not yet
+  enabled during this transaction
+- `logMessages: <array|null>` - array of string log messages or `null` if log
+  message recording was not enabled during this transaction
+- `rewards: <array|null>` - transaction-level rewards; an array of JSON objects
+  containing:
+  - `pubkey: <string>` - The public key, as base-58 encoded string, of the
+    account that received the reward
+  - `lamports: <i64>`- number of reward lamports credited or debited by the
+    account, as a i64
+  - `postBalance: <u64>` - account balance in lamports after the reward was
+    applied
+  - `rewardType: <string|undefined>` - type of reward: "fee", "rent", "voting",
+    "staking"
+  - `commission: <u8|undefined>` - vote account commission when the reward was
+    credited, only present for voting and staking rewards
+- DEPRECATED: `status: <object>` - Transaction status
+  - `"Ok": <null>` - Transaction was successful
+  - `"Err": <ERR>` - Transaction failed with TransactionError
+- `loadedAddresses: <object|undefined>` - Transaction addresses loaded from
+  address lookup tables. Undefined if `maxSupportedTransactionVersion` is not
+  set in request params, or if `jsonParsed` encoding is set in request params.
+  - `writable: <array[string]>` - Ordered list of base-58 encoded addresses for
+    writable loaded accounts
+  - `readonly: <array[string]>` - Ordered list of base-58 encoded addresses for
+    readonly loaded accounts
+- `returnData: <object|undefined>` - the most-recent return data generated by an
+  instruction in the transaction, with the following fields:
+  - `programId: <string>` - the program that generated the return data, as
+    base-58 encoded Pubkey
+  - `data: <[string, encoding]>` - the return data itself, as base-64 encoded
+    binary data
+- `computeUnitsConsumed: <u64|undefined>` - number of
+  [compute units](/docs/core/fees#compute-budget) consumed by the transaction
+- `version: <"legacy"|number|undefined>` - Transaction version. Undefined if
+  `maxSupportedTransactionVersion` is not set in request params.
+- `signatures: <array>` - present if "signatures" are requested for transaction
+  details; an array of signatures strings, corresponding to the transaction
+  order in the block
+
+## Inner Instructions
+
+When an instruction in a transaction makes a [cross-program invocation](/docs/core/cpi) (CPI), the invoked instructions are detailed under `innerInstructions`.
+
+- `index: number` – Index of the instruction at `transaction.message.instructions[index]` that made the CPI.
+- `instructions: array[object]` – List of CPI instructions invoked by the instruction at `index`, encoded as Json or JsonParsed objects.
+
+### JSON Parsed
+
+- `program: string` – Name of the program the CPI is being made to.
+- `programId: string` – Program ID of the program the CPI is being made to.
+- `parsed` – Parser output when the program is recognized:
+  - `type: string` – Instruction name identified by the parser.
+  - `info: object` – Program specific data returned by the parser.
+- `stackHeight: number` – CPI depth.
+
+<Accordions>
+<Accordion title="Reference">
+
+```json
+"innerInstructions": [
+  {
+    "index": 0,
+    "instructions": [
+      {
+        "parsed": {
+          "info": {
+            "extensionTypes": [
+              "immutableOwner"
+            ],
+            "mint": "5kR7n7QJv85NrwwXdYWZ52qkRcyvXqKWDPNooYcfDV6e"
+          },
+          "type": "getAccountDataSize"
+        },
+        "program": "spl-token",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "stackHeight": 2
+      },
+      {
+        "parsed": {
+          "info": {
+            "lamports": 2039280,
+            "newAccount": "9vLSZ1gujMzisVrK5r3ZBXLVJMrF3fp6BtAUDyD94nW2",
+            "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "source": "47eFuHR9ste9kopiJ9eRxcwahmE62JovbKe5r7AjANut",
+            "space": 165
+          },
+          "type": "createAccount"
+        },
+        "program": "system",
+        "programId": "11111111111111111111111111111111",
+        "stackHeight": 2
+      },
+      {
+        "parsed": {
+          "info": {
+            "account": "9vLSZ1gujMzisVrK5r3ZBXLVJMrF3fp6BtAUDyD94nW2"
+          },
+          "type": "initializeImmutableOwner"
+        },
+        "program": "spl-token",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "stackHeight": 2
+      },
+      {
+        "parsed": {
+          "info": {
+            "account": "9vLSZ1gujMzisVrK5r3ZBXLVJMrF3fp6BtAUDyD94nW2",
+            "mint": "5kR7n7QJv85NrwwXdYWZ52qkRcyvXqKWDPNooYcfDV6e",
+            "owner": "47eFuHR9ste9kopiJ9eRxcwahmE62JovbKe5r7AjANut"
+          },
+          "type": "initializeAccount3"
+        },
+        "program": "spl-token",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "stackHeight": 2
+      }
+    ]
+  }
+]
+```
+
+
+</Accordion>
+</Accordions>
+
+
+### JSON
+
+- `programIdIndex: number` – Index into `transaction.message.accountKeys` of the Program ID for the program the CPI is being made to.
+- `accounts: array[number]` – Indexes into `transaction.message.accountKeys` for the accounts passed to the program the CPI is being made to.
+- `data: string` – Base58 encoded instruction data passed to the program the CPI is being made to.
+- `stackHeight: number` – Depth of the CPI call.
+
+<Accordions>
+<Accordion title="Reference">
+
+```json
+"innerInstructions": [
+  {
+    "index": 0,
+    "instructions": [
+      {
+        "accounts": [
+          3
+        ],
+        "data": "84eT",
+        "programIdIndex": 5,
+        "stackHeight": 2
+      },
+      {
+        "accounts": [
+          0,
+          1
+        ],
+        "data": "11119os1e9qSs2u7TsThXqkBSRVFxhmYaFKFZ1waB2X7armDmvK3p5GmLdUxYdg3h7QSrL",
+        "programIdIndex": 2,
+        "stackHeight": 2
+      },
+      {
+        "accounts": [
+          1
+        ],
+        "data": "P",
+        "programIdIndex": 5,
+        "stackHeight": 2
+      },
+      {
+        "accounts": [
+          1,
+          3
+        ],
+        "data": "6QFLvqUwxAjuz2HvEPJqmSbNyCeouS45dJEowLgrYTXLr",
+        "programIdIndex": 5,
+        "stackHeight": 2
+      }
+    ]
+  }
+]
+```
+
+</Accordion>
+</Accordions>
+
+## Token Balances
+
+<Accordions>
+<Accordion title="Reference">
+
+```shell
+"postTokenBalances": [
+  {
+    "accountIndex": 1,
+    "mint": "6HvU8PbqP3nZLkFF59rr2zkTHqetPLgb6NnxKZLHQxNp",
+    "owner": "DKypunNAGLPGBj3SocY8fF4ZrnDNVTf6QcUyW4trvkB",
+    "programId": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "uiTokenAmount": {
+      "amount": "0",
+      "decimals": 2,
+      "uiAmount": null,
+      "uiAmountString": "0"
+    }
+  },
+  {
+    "accountIndex": 2,
+    "mint": "6HvU8PbqP3nZLkFF59rr2zkTHqetPLgb6NnxKZLHQxNp",
+    "owner": "8xm9beCpBH7SgqRz1mKua7KJF52whAVCiDEV1qREGHNV",
+    "programId": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "uiTokenAmount": {
+      "amount": "100",
+      "decimals": 2,
+      "uiAmount": 1.0,
+      "uiAmountString": "1"
+    }
+  }
+],
+
+"preTokenBalances": [
+  {
+    "accountIndex": 1,
+    "mint": "6HvU8PbqP3nZLkFF59rr2zkTHqetPLgb6NnxKZLHQxNp",
+    "owner": "DKypunNAGLPGBj3SocY8fF4ZrnDNVTf6QcUyW4trvkB",
+    "programId": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "uiTokenAmount": {
+      "amount": "100",
+      "decimals": 2,
+      "uiAmount": 1.0,
+      "uiAmountString": "1"
+    }
+  },
+  {
+    "accountIndex": 2,
+    "mint": "6HvU8PbqP3nZLkFF59rr2zkTHqetPLgb6NnxKZLHQxNp",
+    "owner": "8xm9beCpBH7SgqRz1mKua7KJF52whAVCiDEV1qREGHNV",
+    "programId": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "uiTokenAmount": {
+      "amount": "0",
+      "decimals": 2,
+      "uiAmount": null,
+      "uiAmountString": "0"
+    }
+  }
+]
+```
+
+Reference transaction:
+
+```shell
+"transaction": {
+  "message": {
+    "accountKeys": [
+      {
+        "pubkey": "DKypunNAGLPGBj3SocY8fF4ZrnDNVTf6QcUyW4trvkB",
+        "signer": true,
+        "source": "transaction",
+        "writable": true
+      },
+      {
+        "pubkey": "39nzuQ2WYHf231DJRPt1TLfaXSWXEKYGcqP3NQf6zK7G",
+        "signer": false,
+        "source": "transaction",
+        "writable": true
+      },
+      {
+        "pubkey": "DtCPWGmvCTov7CNmNTx8AFe3SEFSxgy265kZawv8SVL3",
+        "signer": false,
+        "source": "transaction",
+        "writable": true
+      },
+      {
+        "pubkey": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "signer": false,
+        "source": "transaction",
+        "writable": false
+      }
+    ],
+    "addressTableLookups": [],
+    "instructions": [
+      {
+        "parsed": {
+          "info": {
+            "amount": "100",
+            "authority": "DKypunNAGLPGBj3SocY8fF4ZrnDNVTf6QcUyW4trvkB",
+            "destination": "DtCPWGmvCTov7CNmNTx8AFe3SEFSxgy265kZawv8SVL3",
+            "source": "39nzuQ2WYHf231DJRPt1TLfaXSWXEKYGcqP3NQf6zK7G"
+          },
+          "type": "transfer"
+        },
+        "program": "spl-token",
+        "programId": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "stackHeight": null
+      }
+    ],
+    "recentBlockhash": "42mjf871LtzDK8NVZUAht1xBoCvNMagQGSM7BnFWZD6M"
+  },
+  "signatures": [
+    "5ZQqsF4tTFJDR5vuNJxejtw2GMc8KEtnPXnQjwhGzAtdbPTKtrLfPkFAbBTyPjZSVB3CbR5BiP5S8zAfZNtuwh88"
+  ]
+}
+```
+
+</Accordion>
+</Accordions>
+
+The JSON structure of token balances is defined as a list of objects in the
+following structure:
+
+- `accountIndex: <number>` - Index of the account in which the token balance is
+  provided for.
+- `mint: <string>` - Pubkey of the token's mint.
+- `owner: <string|undefined>` - Pubkey of token balance's owner.
+- `programId: <string|undefined>` - Pubkey of the Token program that owns the
+  account.
+- `uiTokenAmount: <object>` -
+  - `amount: <string>` - Raw amount of tokens as a string, ignoring decimals.
+  - `decimals: <number>` - Number of decimals configured for token's mint.
+  - `uiAmount: <number|null>` - Token amount as a float, accounting for
+    decimals. **DEPRECATED**
+  - `uiAmountString: <string>` - Token amount as a string, accounting for
+    decimals.
+
+---
+title: HTTP Methods
+seoTitle: Solana RPC HTTP Methods
+hideTableOfContents: false
+h1: Solana RPC HTTP Methods
+---
+
+Solana nodes accept HTTP requests using the
+[JSON-RPC 2.0](https://www.jsonrpc.org/specification) specification.
+
+> For JavaScript applications, use the
+> [@solana/web3.js](https://github.com/solana-labs/solana-web3.js) library as a
+> convenient interface for the RPC methods to interact with a Solana node. For
+> an PubSub connection to a Solana node, use the
+> [Websocket API](/docs/rpc/websocket/).
+
+## RPC HTTP Endpoint
+
+Default port: `8899`
+
+- http://localhost:8899
+- http://192.168.1.88:8899
+
+## Request Formatting
+
+To make a JSON-RPC request, send an HTTP POST request with a
+`Content-Type: application/json` header. The JSON request data should contain 4
+fields:
+
+- `jsonrpc: <string>` - set to `"2.0"`
+- `id: <string | number | null>` - a unique identifier for the request,
+  generated by the client. Typically a string or number, though null is
+  technically allowed but not advised
+- `method: <string>` - a string containing the method to be invoked
+- `params: <array>` - a JSON array of ordered parameter values
+
+Example using curl:
+
+```shell
+curl https://api.devnet.solana.com -s -X POST -H "Content-Type: application/json" -d '
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "getBalance",
+    "params": [
+      "83astBRguLMdt2h5U1Tpdq5tjFoJ6noeGwaY3mDLVcri"
+    ]
+  }
+'
+```
+
+The response output will be a JSON object with the following fields:
+
+- `jsonrpc: <string>` - matching the request specification
+- `id: <number>` - matching the request identifier
+- `result: <array|number|object|string>` - requested data or success
+  confirmation
+
+Requests can be sent in batches by sending an array of JSON-RPC request objects
+as the data for a single POST.
+
+### Example Request
+
+The commitment parameter should be included as the last element in the `params`
+array:
+
+```shell
+curl https://api.devnet.solana.com -s -X POST -H "Content-Type: application/json" -d '
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "getBalance",
+    "params": [
+      "83astBRguLMdt2h5U1Tpdq5tjFoJ6noeGwaY3mDLVcri",
+      {
+        "commitment": "finalized"
+      }
+    ]
+  }
+'
+```
+
+## Definitions
+
+- Hash: A SHA-256 hash of a chunk of data.
+- Pubkey: The public key of a Ed25519 key-pair.
+- Transaction: A list of Solana instructions signed by a client keypair to
+  authorize those actions.
+- Signature: An Ed25519 signature of transaction's payload data including
+  instructions. This can be used to identify transactions.
+
+## Health Check
+
+Although not a JSON RPC API, a `GET /health` at the RPC HTTP Endpoint provides a
+health-check mechanism for use by load balancers or other network
+infrastructure. This request will always return a HTTP 200 OK response with a
+body of "ok", "behind" or "unknown":
+
+- `ok`: The node is within `HEALTH_CHECK_SLOT_DISTANCE` slots from the latest
+  cluster confirmed slot
+- `behind { distance }`: The node is behind `distance` slots from the latest
+  cluster confirmed slot where `distance > HEALTH_CHECK_SLOT_DISTANCE`
+- `unknown`: The node is unable to determine where it stands in relation to the
+  cluster
+
+Solana RPC Methods
+Data Structures as JSON
+HTTP Methods
+getAccountInfo
+getBalance
+getBlock
+getBlockCommitment
+getBlockHeight
+getBlockProduction
+getBlocks
+getBlocksWithLimit
+getBlockTime
+getClusterNodes
+getEpochInfo
+getEpochSchedule
+getFeeForMessage
+getFirstAvailableBlock
+getGenesisHash
+getHealth
+getHighestSnapshotSlot
+getIdentity
+getInflationGovernor
+getInflationRate
+getInflationReward
+getLargestAccounts
+getLatestBlockhash
+getLeaderSchedule
+getMaxRetransmitSlot
+getMaxShredInsertSlot
+getMinimumBalanceForRentExemption
+getMultipleAccounts
+getProgramAccounts
+getRecentPerformanceSamples
+getRecentPrioritizationFees
+getSignaturesForAddress
+getSignatureStatuses
+getSlot
+getSlotLeader
+getSlotLeaders
+getStakeMinimumDelegation
+getSupply
+getTokenAccountBalance
+getTokenAccountsByDelegate
+getTokenAccountsByOwner
+getTokenLargestAccounts
+getTokenSupply
+getTransaction
+getTransactionCount
+getVersion
+getVoteAccounts
+isBlockhashValid
+minimumLedgerSlot
+requestAirdrop
+sendTransaction
+simulateTransaction
+
+Websocket Methods
+accountSubscribe
+accountUnsubscribe
+blockSubscribe
+blockUnsubscribe
+logsSubscribe
+logsUnsubscribe
+programSubscribe
+programUnsubscribe
+rootSubscribe
+rootUnsubscribe
+signatureSubscribe
+signatureUnsubscribe
+slotSubscribe
+slotsUpdatesSubscribe
+slotsUpdatesUnsubscribe
+slotUnsubscribe
+voteSubscribe
+voteUnsubscribe
+
+
+---
+title: getAccountInfo
+hideTableOfContents: true
+h1: getAccountInfo RPC Method
+---
+
+Returns all information associated with the account of provided Pubkey
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getAccountInfo",
+  "params": [
+    // !hover pubkey
+    "vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg",
+    // !hover(1:3) 1
+    {
+      // !hover commitment
+      "commitment": "finalized",
+      // !hover encoding
+      "encoding": "base58"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover pubkey
+const publicKey = address("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg");
+const accountInfo = await rpc.getAccountInfo(publicKey).send();
+
+console.log("Account Info:", accountInfo);
+```
+
+```ts !!request title="web3.js"
+import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+// !hover pubkey
+const publicKey = new PublicKey("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg");
+const accountInfo = await connection.getAccountInfo(publicKey);
+
+console.log("Account Info:", JSON.stringify(accountInfo, null, 2));
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
+use std::str::FromStr;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+    let pubkey = Pubkey::from_str("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg")?;
+    let account = client.get_account(&pubkey).await?;
+
+    println!("{:#?}", account);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! pubkey
+
+!type string
+!required
+
+Pubkey of account to query, as base-58 encoded string.
+
+#### !! 1
+
+!type object
+
+Configuration object.
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! encoding
+
+!type string
+!values base58 base64 base64+zstd binary jsonParsed
+!default binary
+
+Encoding format for Account data. See
+[Parsed Responses](/docs/rpc#parsed-responses).
+
+- `base58` is slow and limited to less than 129 bytes of Account data.
+- `base64` will return base64 encoded data for Account data of any size.
+- `base64+zstd` compresses the Account data using
+  [Zstandard](https://facebook.github.io/zstd/) and base64-encodes the result.
+- `binary` (⚠️ deprecated) is similar to `base58`, except data will be a base58-encoded string and not an array that includes the encoding.
+- `jsonParsed` encoding attempts to use program-specific state parsers to return
+  more human-readable and explicit account state data.
+- If `jsonParsed` is requested but a parser cannot be found, the field falls
+  back to `base64` encoding, detectable when the `data` field is type `string`.
+
+##### !! dataSlice
+
+!type object
+
+Request a slice of the account&apos;s data.
+
+- `length: <usize>` - number of bytes to return
+- `offset: <usize>` - byte offset from which to start reading
+
+<Callout type="info">
+  Data slicing is only available for `base58`, `base64`, or `base64+zstd`
+  encodings.
+</Callout>
+
+##### !! minContextSlot
+
+!type string
+
+The minimum slot that the request can be evaluated at.
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "apiVersion": "2.0.15", "slot": 341197053 },
+    // !hover(1:8) result
+    "value": {
+      // !hover data
+      "data": ["", "base58"],
+      // !hover executable
+      "executable": false,
+      // !hover lamports
+      "lamports": 88849814690250,
+      // !hover owner
+      "owner": "11111111111111111111111111111111",
+      // !hover rentEpoch
+      "rentEpoch": 18446744073709551615,
+      // !hover space
+      "space": 0
+    }
+  },
+  "id": 1
+}
+```
+
+!type object | null
+
+If the requested account doesn't exist result will be `null`. Otherwise, an
+object containing:
+
+#### !! data
+
+!type string | \[string,encoding\] | object
+
+Data associated with the account. Format depends on encoding parameter:
+- If the encoding parameter is left as the deprecated default of `binary`, this will be a string containing encoded binary data.
+- If `base58`, `base64`, or `base64+zstd` is specified, this will be an array, where the first element is the encoded data string and the second element is the encoding format.
+- If `jsonParsed` is specified, this will be JSON format `{<program>: <state>}`.
+
+#### !! executable
+
+!type bool
+
+Boolean indicating if the account contains a program (and is strictly read-only)
+
+#### !! lamports
+!type u64
+
+Number of lamports assigned to this account
+
+#### !! owner
+
+!type string
+
+base-58 encoded Pubkey of the program this account has been assigned to
+
+#### !! rentEpoch
+
+!type u64
+
+The epoch at which this account will next owe rent, as u64
+
+#### !! space
+
+!type u64
+
+The data size of the account
+
+</APIMethod>
+
+---
+title: getBalance
+hideTableOfContents: true
+h1: getBalance RPC Method
+---
+
+Returns the lamport balance of the account of provided Pubkey
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getBalance",
+  "params": [
+    // !hover pubkey
+    "83astBRguLMdt2h5U1Tpdq5tjFoJ6noeGwaY3mDLVcri",
+    {
+      // !hover commitment
+      "commitment": "finalized"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover pubkey
+const publicKey = address("83astBRguLMdt2h5U1Tpdq5tjFoJ6noeGwaY3mDLVcri");
+const balance = await rpc.getBalance(publicKey).send();
+
+console.log("Account Balance:", balance);
+```
+
+```ts !!request title="web3.js"
+import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+// !hover pubkey
+const publicKey = new PublicKey("83astBRguLMdt2h5U1Tpdq5tjFoJ6noeGwaY3mDLVcri");
+const balance = await connection.getBalance(publicKey);
+
+console.log("Account Balance:", JSON.stringify(balance, null, 2));
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
+use std::str::FromStr;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover pubkey
+    let pubkey = Pubkey::from_str("83astBRguLMdt2h5U1Tpdq5tjFoJ6noeGwaY3mDLVcri")?;
+    let balance = client.get_balance(&pubkey).await?;
+
+    println!("{:#?} SOL", balance / LAMPORTS_PER_SOL);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! pubkey
+
+!type string
+!required
+
+Pubkey of account to query, as base-58 encoded string.
+
+#### !! 1
+
+!type object
+
+Configuration object.
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at.
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 1 },
+    // !hover result
+    "value": 0
+  },
+  "id": 1
+}
+```
+
+!type u64
+
+RpcResponse JSON object with value field set to the balance.
+
+</APIMethod>
+---
+title: getFeeForMessage
+hideTableOfContents: true
+h1: getFeeForMessage RPC Method
+---
+
+Get the fee the network will charge for a particular Message
+
+<Callout type="warn" title={"Version Restriction"}>
+  This method is only available in `solana-core` v1.9 or newer. Please use
+  [getFees](/docs/rpc/deprecated/getfees) for `solana-core` v1.8 and below.
+</Callout>
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getFeeForMessage",
+  "params": [
+    // !hover message
+    "AQABAgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAQAA",
+    // !hover(1:3) 1
+    {
+      // !hover commitment
+      "commitment": "processed"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import {
+  createSolanaRpc,
+  getBase64Encoder,
+  type TransactionMessageBytesBase64,
+} from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover message
+let message =
+  "AQABAgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAQAA";
+
+let fee = await rpc
+  .getFeeForMessage(message as TransactionMessageBytesBase64)
+  .send();
+
+console.log(fee);
+```
+
+```ts !!request title="web3.js"
+import { Connection, Message, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover message
+let b64Message =
+  "AQABAgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAQAA";
+let message = Message.from(Buffer.from(b64Message, "base64"));
+
+let fee = await connection.getFeeForMessage(message);
+
+console.log(fee);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use base64::{Engine as _, engine::general_purpose};
+
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::message::Message;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover message
+    let base_64_message = "AQABAgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAQAA";
+    let bytes = general_purpose::STANDARD.decode(base_64_message).unwrap();
+    let message: Message = bincode::deserialize(&bytes).unwrap();
+
+    let fee = client.get_fee_for_message(&message).await?;
+
+    println!("{:#?}", fee);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! message
+
+!type string
+!required
+
+Base-64 encoded Message
+
+#### !! 1
+
+!type object
+
+Configuration object.
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at.
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 5068 },
+    // !hover result
+    "value": 5000
+  },
+  "id": 1
+}
+```
+
+!type u64 | null
+
+Fee corresponding to the message at the specified blockhash
+
+</APIMethod>
+---
+title: getGenesisHash
+hideTableOfContents: true
+h1: getGenesisHash RPC Method
+---
+
+Returns the genesis hash
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getGenesisHash"
+}
+```
+
+```ts !!request title="Kit"
+import { createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+let genesisHash = await rpc.getGenesisHash().send();
+
+console.log(genesisHash);
+```
+
+```ts !!request title="web3.js"
+import { Connection, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+let genesisHash = await connection.getGenesisHash();
+
+console.log(genesisHash);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    let genesis_hash = client.get_genesis_hash().await?;
+
+    println!("{:#?}", genesis_hash);
+
+    Ok(())
+}
+```
+
+### !params
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  // !hover result
+  "result": "GH7ome3EiwEr7tu9JuTh2dpYWBJK3z69Xm1ZE3MEE6JC",
+  "id": 1
+}
+```
+
+!type string
+
+A Hash as base-58 encoded string
+
+</APIMethod>
+---
+title: getLargestAccounts
+hideTableOfContents: true
+h1: getLargestAccounts RPC Method
+---
+
+Returns the 20 largest accounts, by lamport balance (results may be cached up to
+two hours)
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getLargestAccounts",
+  "params": [
+    // !hover(1:3) 0
+    {
+      // !hover commitment
+      "commitment": "finalized"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+let largestAccounts = await rpc.getLargestAccounts().send();
+
+console.log(largestAccounts);
+```
+
+```ts !!request title="web3.js"
+import {
+  Connection,
+  clusterApiUrl,
+  type GetLargestAccountsConfig,
+} from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover(1:4) 0
+let config: GetLargestAccountsConfig = {
+  // !hover commitment
+  commitment: "finalized",
+  // !hover filter
+  filter: "circulating",
+};
+
+let largestAccounts = await connection.getLargestAccounts(config);
+
+console.log(largestAccounts);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::{
+    nonblocking::rpc_client::RpcClient,
+    rpc_config::{RpcLargestAccountsConfig, RpcLargestAccountsFilter},
+};
+use solana_commitment_config::CommitmentConfig;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover(1:5) 0
+    let config = RpcLargestAccountsConfig {
+        // !hover commitment
+        commitment: CommitmentConfig::finalized().into(),
+        // !hover filter
+        filter: RpcLargestAccountsFilter::Circulating.into(),
+        sort_results: true.into(),
+    };
+    let largest_accounts = client.get_largest_accounts_with_config(config).await?;
+
+    println!("{:#?}", largest_accounts);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! 0
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! filter
+
+!type string
+!values circulating nonCirculating
+
+Filter results by account type
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 54 },
+    "value": [
+      {
+        // !hover address
+        "address": "99P8ZgtJYe1buSK8JXkvpLh8xPsCFuLYhz9hQFNw93WJ",
+        // !hover lamports
+        "lamports": 999974
+      },
+      {
+        "address": "uPwWLo16MVehpyWqsLkK3Ka8nLowWvAHbBChqv2FZeL",
+        "lamports": 42
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+!type array
+
+The result will be an RpcResponse JSON object with `value` equal to an array of
+objects containing:
+
+##### !! address
+
+!type string
+
+Base-58 encoded address of the account
+
+##### !! lamports
+
+!type u64
+
+Number of lamports in the account
+
+</APIMethod>
+---
+title: getLatestBlockhash
+hideTableOfContents: true
+h1: getLatestBlockhash RPC Method
+---
+
+Returns the latest blockhash
+
+<Callout type="warn" title={"Version Restriction"}>
+  This method is only available in `solana-core` v1.9 or newer. Please use
+  [getRecentBlockhash](/docs/rpc/http/getrecentblockhash) for `solana-core` v1.8
+  and below.
+</Callout>
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getLatestBlockhash",
+  "params": [
+    // !hover(1:3) 0
+    {
+      // !hover commitment
+      "commitment": "processed"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { createSolanaRpc, type Commitment } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover commitment
+let commitment: Commitment = "processed";
+let latestBlockhash = await rpc.getLatestBlockhash({ commitment }).send();
+
+console.log(latestBlockhash);
+```
+
+```ts !!request title="web3.js"
+import { Connection, clusterApiUrl, type Commitment } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover commitment
+let commitment: Commitment = "processed";
+let latestBlockhash = await connection.getLatestBlockhash(commitment);
+
+console.log(latestBlockhash);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover commitment
+    let commitment = CommitmentConfig::processed();
+    let latest_blockhash = client
+        .get_latest_blockhash_with_commitment(commitment)
+        .await?;
+
+    println!("{:#?}", latest_blockhash);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! 0
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": {
+      "slot": 2792
+    },
+    // !hover(1:4) result
+    "value": {
+      // !hover blockhash
+      "blockhash": "EkSnNWid2cvwEVnVx9aBqawnmiCNiDgp3gUdkDPTKN1N",
+      // !hover lastValidBlockHeight
+      "lastValidBlockHeight": 3090
+    }
+  },
+  "id": 1
+}
+```
+
+!type object
+
+RpcResponse JSON object with `value` field set to a JSON object including:
+
+##### !! blockhash
+
+!type string
+
+A Hash as base-58 encoded string
+
+##### !! lastValidBlockHeight
+
+!type u64
+
+Last [block height](/docs/references/terminology#block-height) at which the
+blockhash will be valid
+
+</APIMethod>
+---
+title: getMinimumBalanceForRentExemption
+hideTableOfContents: true
+h1: getMinimumBalanceForRentExemption RPC Method
+---
+
+Returns minimum balance required to make account rent exempt.
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getMinimumBalanceForRentExemption",
+  "params": [
+    // !hover length
+    50,
+    // !hover(1:3) 1
+    {
+      // !hover commitment
+      "commitment": "processed",
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover length
+let dataLength = BigInt(50);
+let minBalForRentExemption = await rpc
+  .getMinimumBalanceForRentExemption(dataLength)
+  .send();
+
+console.log(minBalForRentExemption);
+```
+
+```ts !!request title="web3.js"
+import { Connection, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover length
+let dataLength = 50;
+let minBalForRentExemption =
+  await connection.getMinimumBalanceForRentExemption(dataLength);
+
+console.log(minBalForRentExemption);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover length
+    let data_len = 50;
+
+    let min_bal_for_rent_exemption = client
+        .get_minimum_balance_for_rent_exemption(data_len)
+        .await?;
+
+    println!("{:#?}", min_bal_for_rent_exemption);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! length
+
+!type usize
+!required
+
+The Account's data length
+
+#### !! 1
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  // !hover result
+  "result": 500,
+  "id": 1
+}
+```
+
+!type u64
+
+Minimum lamports required in the Account to remain rent free
+
+</APIMethod>
+---
+title: getMultipleAccounts
+hideTableOfContents: true
+h1: getMultipleAccounts RPC Method
+---
+
+Returns the account information for a list of Pubkeys.
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getMultipleAccounts",
+  "params": [
+    // !hover(1:4) 0
+    [
+      "vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg",
+      "4fYNw3dojWmQ4dXtSGE9epjRGy9pFSx62YypT7avPYvA"
+    ],
+    // !hover(1:3) 1
+    {
+      // !hover encoding
+      "encoding": "base58",
+      // !hover commitment
+      "commitment": "finalized"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover(1:4) 0
+let addresses = [
+  address("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg"),
+  address("4fYNw3dojWmQ4dXtSGE9epjRGy9pFSx62YypT7avPYvA"),
+];
+
+// !hover(1:3) 1
+let config = {
+  // !hover encoding
+  encoding: "base58",
+  // !hover commitment
+  commitment: "finalized",
+};
+
+let accounts = await rpc.getMultipleAccounts(addresses, config).send();
+
+console.log(accounts);
+```
+
+```ts !!request title="web3.js"
+import {
+  Connection,
+  PublicKey,
+  clusterApiUrl,
+  type GetMultipleAccountsConfig,
+} from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover(1:4) 0
+let addresses = [
+  new PublicKey("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg"),
+  new PublicKey("4fYNw3dojWmQ4dXtSGE9epjRGy9pFSx62YypT7avPYvA"),
+];
+
+// !hover(1:3) 1
+let config: GetMultipleAccountsConfig = {
+  // !hover commitment
+  commitment: "finalized",
+};
+
+let accounts = await connection.getMultipleAccountsInfo(addresses, config);
+
+console.log(accounts);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_account_decoder::UiAccountEncoding;
+use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcAccountInfoConfig};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover(1:4) 0
+    let addresses = [
+        pubkey!("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg"),
+        pubkey!("4fYNw3dojWmQ4dXtSGE9epjRGy9pFSx62YypT7avPYvA"),
+    ];
+
+    // !hover(1:6) 1
+    let config = RpcAccountInfoConfig {
+        // !hover encoding
+        encoding: UiAccountEncoding::Base58.into(),
+        // !hover dataSlice
+        data_slice: None,
+        // !hover commitment
+        commitment: CommitmentConfig::finalized().into(),
+        // !hover minContextSlot
+        min_context_slot: None,
+    };
+
+    let accounts = client
+        .get_multiple_accounts_with_config(&addresses, config)
+        .await?;
+
+    println!("{:#?}", accounts);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! 0
+
+!type array
+!required
+
+An array of Pubkeys to query, as base-58 encoded strings (up to a maximum
+of 100)
+
+#### !! 1
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at
+
+##### !! dataSlice
+
+!type object
+
+Request a slice of the account's data.
+
+- `length: <usize>` - number of bytes to return
+- `offset: <usize>` - byte offset from which to start reading
+
+<Callout type="info">
+  Data slicing is only available for `base58`, `base64`, or `base64+zstd`
+  encodings.
+</Callout>
+
+##### !! encoding
+
+!type string
+!values jsonParsed base58 base64 base64+zstd
+!default base64
+
+Encoding format for the returned Account data
+
+- `base58` is slow and limited to less than 129 bytes of Account data.
+- `base64` will return base64 encoded data for Account data of any size.
+- `base64+zstd` compresses the Account data using
+  [Zstandard](https://facebook.github.io/zstd/) and base64-encodes the result.
+- `jsonParsed` encoding attempts to use program-specific state parsers to return
+  more human-readable and explicit account state data.
+- If `jsonParsed` is requested but a parser cannot be found, the field falls
+  back to `base64` encoding, detectable when the `data` field is type
+  `<string>`.
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "apiVersion": "2.0.15", "slot": 341197247 },
+    // !hover(1:18) result
+    "value": [
+      {
+        // !hover data
+        "data": ["", "base58"],
+        // !hover executable
+        "executable": false,
+        // !hover lamports
+        "lamports": 88849814690250,
+        // !hover owner
+        "owner": "11111111111111111111111111111111",
+        // !hover rentEpoch
+        "rentEpoch": 18446744073709551615,
+        // !hover space
+        "space": 0
+      },
+      {
+        "data": ["", "base58"],
+        "executable": false,
+        "lamports": 998763433,
+        "owner": "2WRuhE4GJFoE23DYzp2ij6ZnuQ8p9mJeU6gDgfsjR4or",
+        "rentEpoch": 18446744073709551615,
+        "space": 0
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+!type array
+
+The result will be an array containing either:
+
+- `null` - if the account at that Pubkey doesn't exist, or
+- Account objects with the following fields:
+
+##### !! data
+
+!type [string,encoding] | object
+
+Data associated with the account, either as encoded binary data or JSON format
+`{<program>: <state>}` - depending on encoding parameter
+
+##### !! executable
+
+!type bool
+
+Boolean indicating if the account contains a program (and is strictly read-only)
+
+##### !! lamports
+
+!type u64
+
+Number of lamports assigned to this account
+
+##### !! owner
+
+!type string
+
+Base-58 encoded Pubkey of the program this account has been assigned to
+
+##### !! rentEpoch
+
+!type u64
+
+The epoch at which this account will next owe rent
+
+##### !! space
+
+!type u64
+
+The data size of the account
+
+</APIMethod>
+---
+title: getProgramAccounts
+hideTableOfContents: true
+h1: getProgramAccounts RPC Method
+---
+
+Returns all accounts owned by the provided program Pubkey
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getProgramAccounts",
+  "params": [
+    // !hover pubkey
+    "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T",
+    // !hover(1:11) 1
+    {
+      // !hover commitment
+      "commitment": "finalized",
+      // !hover(1:9) filters
+      "filters": [
+        { "dataSize": 17 },
+        {
+          "memcmp": {
+            "offset": 4,
+            "bytes": "3Mc6vR"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover pubkey
+let program = address("4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T");
+
+let accounts = await rpc
+  .getProgramAccounts(
+    program,
+    // !hover(1:15) 1
+    {
+      // !hover commitment
+      commitment: "finalized",
+      // !hover(1:12) filters
+      filters: [
+        {
+          dataSize: BigInt(17),
+        },
+        {
+          memcmp: {
+            bytes: "3Mc6vR",
+            offset: BigInt(4),
+          },
+        },
+      ],
+    },
+  )
+  .send();
+
+console.log(accounts);
+```
+
+```ts !!request title="web3.js"
+import {
+  Connection,
+  PublicKey,
+  clusterApiUrl,
+  type GetProgramAccountsConfig,
+} from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover pubkey
+let programId = new PublicKey("4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T");
+
+// !hover(1:15) 1
+let config: GetProgramAccountsConfig = {
+  // !hover commitment
+  commitment: "finalized",
+  // !hover(1:12) filters
+  filters: [
+    {
+      dataSize: 17,
+    },
+    {
+      memcmp: {
+        bytes: "3Mc6vR",
+        offset: 4,
+      },
+    },
+  ],
+};
+
+let accounts = await connection.getProgramAccounts(programId, config);
+
+console.log(accounts);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::{
+    nonblocking::rpc_client::RpcClient,
+    rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
+    rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
+};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover pubkey
+    let program = pubkey!("4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T");
+
+    // !hover(1:18) 1
+    let config = RpcProgramAccountsConfig {
+        // !hover(1:8) filters
+        filters: vec![
+            RpcFilterType::DataSize(17),
+            RpcFilterType::Memcmp(Memcmp::new(
+                4,
+                MemcmpEncodedBytes::Base64("3Mc6vR".to_string()),
+            )),
+        ]
+        .into(),
+        account_config: RpcAccountInfoConfig {
+            // !hover encoding
+            encoding: None,
+            // !hover dataSlice
+            data_slice: None,
+            // !hover commitment
+            commitment: None,
+            // !hover minContextSlot
+            min_context_slot: None,
+        },
+        // !hover withContext
+        with_context: None,
+        sort_results: true.into(),
+    };
+
+    let accounts = client
+        .get_program_accounts_with_config(&program, config)
+        .await?;
+
+    println!("{:#?}", accounts);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! pubkey
+
+!type string
+!required
+
+Pubkey of program, as base-58 encoded string
+
+#### !! 1
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at
+
+##### !! withContext
+
+!type bool
+
+Wrap the result in an RpcResponse JSON object
+
+##### !! encoding
+
+!type string
+!values jsonParsed base58 base64 base64+zstd binary 
+!default binary
+
+Encoding format for the returned Account data
+
+- `base58` is slow and limited to less than 129 bytes of Account data.
+- `base64` will return base64 encoded data for Account data of any size.
+- `base64+zstd` compresses the Account data using
+  [Zstandard](https://facebook.github.io/zstd/) and base64-encodes the result.
+- `binary` (⚠️ deprecated) is similar to `base58`, except data will be a base58-encoded string and not an array that includes the encoding.
+- `jsonParsed` encoding attempts to use program-specific state parsers to return
+  more human-readable and explicit account state data.
+- If `jsonParsed` is requested but a parser cannot be found, the field falls
+  back to `base64` encoding, detectable when the `data` field is type
+  `<string>`.
+
+##### !! dataSlice
+
+!type object
+
+Request a slice of the account's data.
+
+- `length: <usize>` - number of bytes to return
+- `offset: <usize>` - byte offset from which to start reading
+
+<Callout type="info">
+  Data slicing is only available for `base58`, `base64`, or `base64+zstd`
+  encodings.
+</Callout>
+
+##### !! filters
+
+!type array
+
+Filter results using up to 4 filter objects. See
+[Filtering](/docs/rpc#filter-criteria).
+
+<Callout type="info">
+  The resultant account(s) must meet **ALL** filter criteria to be included in
+  the returned results
+</Callout>
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  // !hover(1:12) result
+  "result": [
+    {
+      // !hover pubkey
+      "pubkey": "CxELquR1gPP8wHe33gZ4QxqGB3sZ9RSwsJ2KshVewkFY",
+      // !hover(1:8) account
+      "account": {
+        // !hover data
+        "data": "2R9jLfiAQ9bgdcw6h8s44439",
+        // !hover executable
+        "executable": false,
+        // !hover lamports
+        "lamports": 15298080,
+        // !hover owner
+        "owner": "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T",
+        // !hover rentEpoch
+        "rentEpoch": 28,
+        // !hover space
+        "space": 42
+      }
+    }
+  ],
+  "id": 1
+}
+```
+
+!type array
+
+By default, returns an array of JSON objects. If `withContext` flag is set, the
+array will be wrapped in an RpcResponse JSON object.
+
+Each object contains:
+
+##### !! pubkey
+
+!type string
+
+The account Pubkey as base-58 encoded string
+
+##### !! account
+
+!type object
+
+A JSON object containing:
+
+- `lamports: <u64>` - number of lamports assigned to this account, as a u64
+- `owner: <string>` - base-58 encoded Pubkey of the program this account has
+  been assigned to
+- `data: <string|[string,encoding]|object>` - data associated with the account. Format depends on encoding parameter:
+  - If the encoding parameter is left as the deprecated default of `binary`, this will be a string containing encoded binary data.
+  - If `base58`, `base64`, or `base64+zstd` is specified, this will be an array, where the first element is the encoded data string and the second element is the encoding format.
+  - If `jsonParsed` is specified, this will be JSON format `{<program>: <state>}`.
+- `executable: <bool>` - boolean indicating if the account contains a program
+  (and is strictly read-only)
+- `rentEpoch: <u64>` - the epoch at which this account will next owe rent, as
+  u64
+- `space: <u64>` - the data size of the account
+
+</APIMethod>
+---
+title: getSignaturesForAddress
+hideTableOfContents: true
+h1: getSignaturesForAddress RPC Method
+---
+
+Returns signatures for confirmed transactions that include the given address in
+their `accountKeys` list. Returns signatures backwards in time from the provided
+signature or most recent confirmed block
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getSignaturesForAddress",
+  "params": [
+    // !hover address
+    "Vote111111111111111111111111111111111111111",
+    // !hover(1:6) 1
+    {
+      // !hover commitment
+      "commitment": "finalized",
+      // !hover limit
+      "limit": 1
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover address
+let addr = address("Vote111111111111111111111111111111111111111");
+
+// !hover(1:3) 1
+let signaturesForConfig = {
+  // !hover limit
+  limit: 1,
+};
+
+let signatures = await rpc
+  .getSignaturesForAddress(addr, signaturesForConfig)
+  .send();
+
+console.log(signatures);
+```
+
+```ts !!request title="web3.js"
+import {
+  Connection,
+  PublicKey,
+  clusterApiUrl,
+  type SignaturesForAddressOptions,
+} from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover(1:3) 1
+let signaturesOptions: SignaturesForAddressOptions = {
+  // !hover limit
+  limit: 1,
+};
+
+// !hover address
+let address = new PublicKey("Vote111111111111111111111111111111111111111");
+let signatures = await connection.getSignaturesForAddress(
+  address,
+  signaturesOptions,
+);
+
+console.log(signatures);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::{
+    nonblocking::rpc_client::RpcClient, rpc_client::GetConfirmedSignaturesForAddress2Config,
+};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover address
+    let address = pubkey!("Vote111111111111111111111111111111111111111");
+
+    // !hover(1:6) 1
+    let signatures_for_config = GetConfirmedSignaturesForAddress2Config {
+        // !hover before
+        before: None,
+        // !hover until
+        until: None,
+        // !hover limit
+        limit: Some(1),
+        // !hover commitment
+        commitment: CommitmentConfig::finalized().into(),
+    };
+
+    let signatures = client
+        .get_signatures_for_address_with_config(&address, signatures_for_config)
+        .await?;
+
+    println!("{:#?}", signatures);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! address
+
+!type string
+!required
+
+Account address as base-58 encoded string
+
+#### !! 1
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at
+
+##### !! limit
+
+!type number
+
+Maximum transaction signatures to return (between 1 and 1,000).
+
+Default: `1000`
+
+##### !! before
+
+!type string
+
+Start searching backwards from this transaction signature. If not provided the
+search starts from the top of the highest max confirmed block.
+
+##### !! until
+
+!type string
+
+Search until this transaction signature, if found before limit reached
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  // !hover(1:10) result
+  "result": [
+    {
+      // !hover signature
+      "signature": "5h6xBEauJ3PK6SWCZ1PGjBvj8vDdWG3KpwATGy1ARAXFSDwt8GFXM7W5Ncn16wmqokgpiKRLuS83KUxyZyv2sUYv",
+      // !hover slot
+      "slot": 114,
+      // !hover err
+      "err": null,
+      // !hover memo
+      "memo": null,
+      // !hover blockTime
+      "blockTime": null,
+      // !hover confirmationStatus
+      "confirmationStatus": "finalized"
+    }
+  ],
+  "id": 1
+}
+```
+
+!type array
+
+An array of transaction signature information objects, ordered from **newest**
+to **oldest** transaction, containing:
+
+##### !! signature
+
+!type string
+
+Transaction signature as base-58 encoded string
+
+##### !! slot
+
+!type u64
+
+The slot that contains the block with the transaction
+
+##### !! err
+
+!type object | null
+
+Error if transaction failed, null if transaction succeeded. See
+[TransactionError definitions](https://github.com/solana-labs/solana/blob/c0c60386544ec9a9ec7119229f37386d9f070523/sdk/src/transaction/error.rs#L13)
+for more info.
+
+##### !! memo
+
+!type string | null
+
+Memo associated with the transaction, null if no memo is present
+
+##### !! blockTime
+
+!type i64 | null
+
+Estimated production time, as Unix timestamp (seconds since the Unix epoch) of
+when transaction was processed. null if not available.
+
+##### !! confirmationStatus
+
+!type string | null
+
+The transaction's cluster confirmation status; Either `processed`, `confirmed`,
+or `finalized`. See [Commitment](/docs/rpc/#configuring-state-commitment) for
+more on optimistic confirmation.
+
+</APIMethod>
+---
+title: getSignatureStatuses
+hideTableOfContents: true
+h1: getSignatureStatuses RPC Method
+---
+
+Returns the statuses of a list of signatures. Each signature must be a
+[txid](/docs/references/terminology#transaction-id), the first signature of a
+transaction.
+
+<Callout type="info">
+  Unless the `searchTransactionHistory` configuration parameter is included,
+  this method only searches the recent status cache of signatures, which retains
+  statuses for all active slots plus `MAX_RECENT_BLOCKHASHES` rooted slots.
+</Callout>
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getSignatureStatuses",
+  "params": [
+    // !hover(1:3) 0
+    [
+      "4cdd1oX7cfVALfr26tP52BZ6cSzrgnNGtYD7BFhm6FFeZV5sPTnRvg6NRn8yC6DbEikXcrNChBM5vVJnTgKhGhVu"
+    ],
+    // !hover(1:3) 1
+    {
+      // !hover searchTransactionHistory
+      "searchTransactionHistory": true
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { createSolanaRpc, type Signature } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover(1:3) 0
+let signatures = [
+  "4cdd1oX7cfVALfr26tP52BZ6cSzrgnNGtYD7BFhm6FFeZV5sPTnRvg6NRn8yC6DbEikXcrNChBM5vVJnTgKhGhVu" as unknown as Signature
+];
+
+// !hover(1:3) 1
+let config = {
+  // !hover searchTransactionHistory
+  searchTransactionHistory: true
+};
+
+let signatureStatus = await rpc.getSignatureStatuses(signatures, config).send();
+
+console.log(signatureStatus);
+```
+
+```ts !!request title="web3.js"
+import {
+  Connection,
+  clusterApiUrl,
+  type SignatureStatusConfig
+} from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover(1:3) 0
+let signatures = [
+  "4cdd1oX7cfVALfr26tP52BZ6cSzrgnNGtYD7BFhm6FFeZV5sPTnRvg6NRn8yC6DbEikXcrNChBM5vVJnTgKhGhVu"
+];
+
+// !hover(1:3) 1
+let config: SignatureStatusConfig = {
+  // !hover searchTransactionHistory
+  searchTransactionHistory: true
+};
+
+let signatureStatus = await connection.getSignatureStatuses(signatures, config);
+console.log(signatureStatus);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::signature::Signature;
+use std::str::FromStr;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover(1:3) 0
+    let signatures_str = [
+        "4cdd1oX7cfVALfr26tP52BZ6cSzrgnNGtYD7BFhm6FFeZV5sPTnRvg6NRn8yC6DbEikXcrNChBM5vVJnTgKhGhVu",
+    ];
+    let signatures = signatures_str.map(|sig| Signature::from_str(sig).unwrap());
+
+    let signature_status = client
+        .get_signature_statuses_with_history(&signatures)
+        .await?;
+
+    println!("{:#?}", signature_status);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! 0
+
+!type array !required
+
+An array of transaction signatures to confirm, as base-58 encoded strings (up to
+a maximum of 256)
+
+#### !! 1
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! searchTransactionHistory
+
+!type bool
+
+if `true` - a Solana node will search its ledger cache for any signatures not
+found in the recent status cache
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": {
+      "slot": 82
+    },
+    // !hover(1:12) result
+    "value": [
+      {
+        // !hover slot
+        "slot": 48,
+        // !hover confirmations
+        "confirmations": null,
+        // !hover err
+        "err": null,
+        // !hover status
+        "status": {
+          "Ok": null
+        },
+        // !hover confirmationStatus
+        "confirmationStatus": "finalized"
+      },
+      null
+    ]
+  },
+  "id": 1
+}
+```
+
+!type array
+
+An array of `RpcResponse<object>` consisting of either `null` or an object
+containing the following fields:
+
+##### !! slot
+
+!type u64
+
+The slot the transaction was processed
+
+##### !! confirmations
+
+!type usize | null
+
+Number of blocks since signature confirmation, `null` if rooted, as well as
+finalized by a supermajority of the cluster
+
+##### !! err
+
+!type object | null
+
+Error if transaction failed, `null` if transaction succeeded. See
+[TransactionError definitions](https://github.com/anza-xyz/solana-sdk/blob/50dfbd088c51b7229c67d432d8c8801dafaa7904/transaction-error/src/lib.rs#L15)
+
+##### !! status
+
+!type object
+
+**DEPRECATED** Transaction status
+
+- `"Ok": <null>` - Transaction was successful
+- `"Err": <ERR>` - Transaction failed with TransactionError
+
+##### !! confirmationStatus
+
+!type string | null
+
+The transaction's cluster confirmation status; Either `processed`, `confirmed`,
+or `finalized`. See [Commitment](/docs/rpc/#configuring-state-commitment) for
+more on optimistic confirmation.
+
+</APIMethod>
+---
+title: getSlot
+hideTableOfContents: true
+h1: getSlot RPC Method
+---
+
+Returns the slot that has reached the
+[given or default commitment level](/docs/rpc/#configuring-state-commitment)
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getSlot",
+  "params": [
+    // !hover(1:3) 0
+    {
+      // !hover commitment
+      "commitment": "finalized"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+let slot = await rpc.getSlot().send();
+
+console.log(slot);
+```
+
+```ts !!request title="web3.js"
+import { Connection, clusterApiUrl, type GetSlotConfig } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover(1:3)  0
+let config: GetSlotConfig = {
+  // !hover  commitment
+  commitment: "finalized",
+};
+
+let slot = await connection.getSlot(config);
+
+console.log(slot);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    let slot = client.get_slot().await?;
+
+    println!("{}", slot);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! 0
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  // !hover result
+  "result": 1234,
+  "id": 1
+}
+```
+
+!type u64
+
+Current slot
+
+</APIMethod>
+---
+title: getSlotLeader
+hideTableOfContents: true
+h1: getSlotLeader RPC Method
+---
+
+Returns the current slot leader
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getSlotLeader",
+  "params": [
+    // !hover(1:3) 0
+    {
+      // !hover commitment
+      "commitment": "finalized"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+let slotLeader = await rpc.getSlotLeader().send();
+
+console.log(slotLeader);
+```
+
+```ts !!request title="web3.js"
+import { Connection, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+let slotLeader = await connection.getSlotLeader();
+
+console.log(slotLeader);
+```
+
+### !params
+
+#### !! 0
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  // !hover result
+  "result": "ENvAW7JScgYq6o4zKZwewtkzzJgDzuJAFxYasvmEQdpS",
+  "id": 1
+}
+```
+
+!type string
+
+Node identity Pubkey as base-58 encoded string
+
+</APIMethod>
+---
+title: getSlotLeaders
+hideTableOfContents: true
+h1: getSlotLeaders RPC Method
+---
+
+Returns the slot leaders for a given slot range
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getSlotLeaders",
+  "params": [
+    // !hover start slot
+    100,
+    // !hover limit
+    10
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover start slot
+let startSlot = BigInt(378037836);
+// !hover limit
+let limit = 10;
+
+let slotLeaders = await rpc.getSlotLeaders(startSlot, limit).send();
+
+console.log(slotLeaders);
+```
+
+```ts !!request title="web3.js"
+import { Connection, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover start slot
+let startSlot = 378037836;
+// !hover limit
+let limit = 10;
+
+let slotLeaders = await connection.getSlotLeaders(startSlot, limit);
+
+console.log(slotLeaders);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover start slot
+    let start_slot = 378037836;
+    // !hover limit
+    let limit = 10;
+
+    let slot_leaders = client.get_slot_leaders(start_slot, limit).await?;
+
+    println!("{:#?}", slot_leaders);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! start slot
+
+!type u64
+!required
+
+Start slot, as u64 integer
+
+#### !! limit
+
+!type u64
+!required
+
+Limit, as u64 integer (between 1 and 5,000)
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  // !hover(1:12) result
+  "result": [
+    "ChorusmmK7i1AxXeiTtQgQZhQNiXYU84ULeaYF1EH15n",
+    "ChorusmmK7i1AxXeiTtQgQZhQNiXYU84ULeaYF1EH15n",
+    "ChorusmmK7i1AxXeiTtQgQZhQNiXYU84ULeaYF1EH15n",
+    "ChorusmmK7i1AxXeiTtQgQZhQNiXYU84ULeaYF1EH15n",
+    "Awes4Tr6TX8JDzEhCZY2QVNimT6iD1zWHzf1vNyGvpLM",
+    "Awes4Tr6TX8JDzEhCZY2QVNimT6iD1zWHzf1vNyGvpLM",
+    "Awes4Tr6TX8JDzEhCZY2QVNimT6iD1zWHzf1vNyGvpLM",
+    "Awes4Tr6TX8JDzEhCZY2QVNimT6iD1zWHzf1vNyGvpLM",
+    "DWvDTSh3qfn88UoQTEKRV2JnLt5jtJAVoiCo3ivtMwXP",
+    "DWvDTSh3qfn88UoQTEKRV2JnLt5jtJAVoiCo3ivtMwXP"
+  ],
+  "id": 1
+}
+```
+
+!type array
+
+Array of Node identity public keys as base-58 encoded strings.
+
+</APIMethod>
+---
+title: getTokenAccountBalance
+hideTableOfContents: true
+h1: getTokenAccountBalance RPC Method
+---
+
+Returns the token balance of an SPL Token account.
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getTokenAccountBalance",
+  "params": [
+    // !hover pubkey
+    "7fUAJdStEuGbc3sM84cKRL6yYaaSstyLSU4ve5oovLS7",
+    {
+      // !hover commitment
+      "commitment": "finalized"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover pubkey
+let tokenAddress = address("48gpnn8nsmkvkgso7462Z1nFhUrprGQ71u1YLBPzizbY");
+
+let tokenBalance = await rpc.getTokenAccountBalance(tokenAddress).send();
+
+console.log(tokenBalance);
+```
+
+```ts !!request title="web3.js"
+import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover pubkey
+let tokenAddress = new PublicKey(
+  "48gpnn8nsmkvkgso7462Z1nFhUrprGQ71u1YLBPzizbY",
+);
+
+let tokenBalance = await connection.getTokenAccountBalance(tokenAddress);
+
+console.log(tokenBalance);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover pubkey
+    let token_address = pubkey!("48gpnn8nsmkvkgso7462Z1nFhUrprGQ71u1YLBPzizbY");
+    let token_acc_bal = client.get_token_account_balance(&token_address).await?;
+
+    println!("{:#?}", token_acc_bal);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! pubkey
+
+!type string
+!required
+
+Pubkey of Token account to query, as base-58 encoded string
+
+#### !! 1
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 1114 },
+    // !hover(1:6) value
+    "value": {
+      // !hover amount
+      "amount": "9864",
+      // !hover decimals
+      "decimals": 2,
+      // !hover uiAmount
+      "uiAmount": 98.64,
+      // !hover uiAmountString
+      "uiAmountString": "98.64"
+    }
+  },
+  "id": 1
+}
+```
+
+!type object
+
+The result will be a JSON object containing:
+
+##### !! amount
+
+!type string
+
+The raw balance without decimals, a string representation of u64
+
+##### !! decimals
+
+!type u8
+
+Number of base 10 digits to the right of the decimal place
+
+##### !! uiAmount
+
+!type number | null
+
+The balance, using mint-prescribed decimals **DEPRECATED**
+
+##### !! uiAmountString
+
+!type string
+
+The balance as a string, using mint-prescribed decimals
+
+</APIMethod>
+
+<Callout type="info">
+  For more details on returned data, the [Token Balances
+  Structure](/docs/rpc/json-structures#token-balances) response from
+  [getBlock](/docs/rpc/http/getblock) follows a similar structure.
+</Callout>
+---
+title: getTokenAccountsByDelegate
+hideTableOfContents: true
+h1: getTokenAccountsByDelegate RPC Method
+---
+
+Returns all SPL Token accounts by approved Delegate.
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getTokenAccountsByDelegate",
+  "params": [
+    // !hover pubkey
+    "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T",
+    // !hover(1:3) 1
+    {
+      // !hover programId
+      "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    // !hover(1:3) 2
+    {
+      // !hover commitment
+      "commitment": "finalized",
+      // !hover encoding
+      "encoding": "jsonParsed"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover pubkey
+let delegate = address("4kg8oh3jdNtn7j2wcS7TrUua31AgbLzDVkBZgTAe44aF");
+
+// !hover programId
+let tokenProgram = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+let tokenAccByDelegate = await rpc
+  .getTokenAccountsByDelegate(delegate, { programId: tokenProgram })
+  .send();
+
+console.log(tokenAccByDelegate);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::{nonblocking::rpc_client::RpcClient, rpc_request::TokenAccountsFilter};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover pubkey
+    let delegate = pubkey!("4kg8oh3jdNtn7j2wcS7TrUua31AgbLzDVkBZgTAe44aF");
+
+    // !hover programId
+    let token_program = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+    let token_acc_by_del = client
+        .get_token_accounts_by_delegate_with_commitment(
+            &delegate,
+            TokenAccountsFilter::ProgramId(token_program),
+            CommitmentConfig::finalized(),
+        )
+        .await?;
+
+    println!("{:#?}", token_acc_by_del);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! pubkey
+
+!type string
+!required
+
+Pubkey of account delegate to query, as base-58 encoded string
+
+#### !! 1
+
+!type object
+!required
+
+A JSON object with one of the following fields:
+
+##### !! mint
+
+!type string
+
+Pubkey of the specific token Mint to limit accounts to, as base-58 encoded
+string; or
+
+##### !! programId
+
+!type string
+
+Pubkey of the Token program that owns the accounts, as base-58 encoded string
+
+#### !! 2
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at
+
+##### !! dataSlice
+
+!type object
+
+Request a slice of the account's data.
+
+- `length: <usize>` - number of bytes to return
+- `offset: <usize>` - byte offset from which to start reading
+
+<Callout type="info">
+  Data slicing is only available for `base58`, `base64`, or `base64+zstd`
+  encodings.
+</Callout>
+
+##### !! encoding
+
+!type string
+!values base58 base64 base64+zstd binary jsonParsed
+!default binary
+
+Encoding format for Account data
+
+- `base58` is slow and limited to less than 129 bytes of Account data.
+- `base64` will return base64 encoded data for Account data of any size.
+- `base64+zstd` compresses the Account data using
+  [Zstandard](https://facebook.github.io/zstd/) and base64-encodes the result.
+- `binary` (⚠️ deprecated) is similar to `base58`, except data will be a base58-encoded string and not an array that includes the encoding.
+- `jsonParsed` encoding attempts to use program-specific state parsers to return
+  more human-readable and explicit account state data.
+- If `jsonParsed` is requested but a parser cannot be found, the field falls
+  back to `base64` encoding, detectable when the `data` field is type `string`.
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 1114 },
+    "value": [
+      {
+        // !hover pubkey
+        "pubkey": "28YTZEwqtMHWrhWcvv34se7pjS7wctgqzCPB3gReCFKp",
+        // !hover(1:33) account
+        "account": {
+          "data": {
+            "program": "spl-token",
+            "parsed": {
+              "info": {
+                "tokenAmount": {
+                  "amount": "1",
+                  "decimals": 1,
+                  "uiAmount": 0.1,
+                  "uiAmountString": "0.1"
+                },
+                "delegate": "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T",
+                "delegatedAmount": {
+                  "amount": "1",
+                  "decimals": 1,
+                  "uiAmount": 0.1,
+                  "uiAmountString": "0.1"
+                },
+                "state": "initialized",
+                "isNative": false,
+                "mint": "3wyAj7Rt1TWVPZVteFJPLa26JmLvdb1CAKEFZm3NY75E",
+                "owner": "CnPoSPKXu7wJqxe59Fs72tkBeALovhsCxYeFwPCQH9TD"
+              },
+              "type": "account"
+            },
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 1726080,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 4,
+          "space": 165
+        }
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+!type array
+
+An array of JSON objects containing:
+
+##### !! pubkey
+
+!type string
+
+The account Pubkey as base-58 encoded string
+
+##### !! account
+
+!type object
+
+A JSON object containing:
+
+- `lamports: <u64>` - number of lamports assigned to this account, as a u64
+- `owner: <string>` - base-58 encoded Pubkey of the program this account has
+  been assigned to
+- `data: <string|[string,encoding]|object>` - Token state data associated with the account. Format depends on encoding parameter:
+  - If the encoding parameter is left as the deprecated default of `binary`, this will be a string containing encoded binary data.
+  - If `base58`, `base64`, or `base64+zstd` is specified, this will be an array, where the first element is the encoded data string and the second element is the encoding format.
+  - If `jsonParsed` is specified, this will be JSON format `{<program>: <state>}`.
+- `executable: <bool>` - boolean indicating if the account contains a program
+  (and is strictly read-only)
+- `rentEpoch: <u64>` - the epoch at which this account will next owe rent, as
+  u64
+- `space: <u64>` - the data size of the account
+
+When the data is requested with the `jsonParsed` encoding a format similar to
+that of the [Token Balances Structure](/docs/rpc/json-structures#token-balances)
+can be expected inside the structure, both for the `tokenAmount` and the
+`delegatedAmount` - with the latter being an optional object.
+
+</APIMethod>
+---
+title: getTokenAccountsByOwner
+hideTableOfContents: true
+h1: getTokenAccountsByOwner RPC Method
+---
+
+Returns all SPL Token accounts by token owner.
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getTokenAccountsByOwner",
+  "params": [
+    // !hover pubkey
+    "A1TMhSGzQxMr1TboBKtgixKz1sS6REASMxPo1qsyTSJd",
+    // !hover(1:3) 1
+    {
+      // !hover programId
+      "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    // !hover(1:3) 2
+    {
+      // !hover commitment
+      "commitment": "finalized",
+      // !hover encoding
+      "encoding": "jsonParsed"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover pubkey
+let owner = address("4kg8oh3jdNtn7j2wcS7TrUua31AgbLzDVkBZgTAe44aF");
+
+// !hover programId
+let tokenProgram = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+let tokenAccounts = await rpc
+  .getTokenAccountsByOwner(
+    owner,
+    { programId: tokenProgram },
+    // !hover encoding
+    { encoding: "base64" },
+  )
+  .send();
+
+console.log(tokenAccounts);
+```
+
+```ts !!request title="web3.js"
+import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover pubkey
+let owner = new PublicKey("4kg8oh3jdNtn7j2wcS7TrUua31AgbLzDVkBZgTAe44aF");
+
+// !hover programId
+let tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+let tokenAccounts = await connection.getTokenAccountsByOwner(owner, {
+  programId: tokenProgram,
+});
+
+console.log(tokenAccounts);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::{nonblocking::rpc_client::RpcClient, rpc_request::TokenAccountsFilter};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover pubkey
+    let owner = pubkey!("4kg8oh3jdNtn7j2wcS7TrUua31AgbLzDVkBZgTAe44aF");
+
+    // !hover programId
+    let token_program = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+    let token_accounts = client
+        .get_token_accounts_by_owner(&owner, TokenAccountsFilter::ProgramId(token_program))
+        .await?;
+
+    println!("{:#?}", token_accounts);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! pubkey
+
+!type string
+!required
+
+Pubkey of account owner to query, as base-58 encoded string
+
+#### !! 1
+
+!type object
+!required
+
+A JSON object with one of the following fields:
+
+##### !! mint
+
+!type string
+
+Pubkey of the specific token Mint to limit accounts to, as base-58 encoded
+string
+
+##### !! programId
+
+!type string
+
+Pubkey of the Token program that owns the accounts, as base-58 encoded string
+
+#### !! 2
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+##### !! minContextSlot
+
+!type number
+
+The minimum slot that the request can be evaluated at
+
+##### !! dataSlice
+
+!type object
+
+Request a slice of the account's data.
+
+- `length: <usize>` - number of bytes to return
+- `offset: <usize>` - byte offset from which to start reading
+
+<Callout type="info">
+  Data slicing is only available for `base58`, `base64`, or `base64+zstd`
+  encodings.
+</Callout>
+
+##### !! encoding
+
+!type string
+!values base58 base64 base64+zstd binary jsonParsed
+!default binary
+
+Encoding format for Account data
+
+- `base58` is slow and limited to less than 129 bytes of Account data.
+- `base64` will return base64 encoded data for Account data of any size.
+- `base64+zstd` compresses the Account data using
+  [Zstandard](https://facebook.github.io/zstd/) and base64-encodes the result.
+- `binary` (⚠️ deprecated) is similar to `base58`, except data will be a base58-encoded string and not an array that includes the encoding.
+- `jsonParsed` encoding attempts to use program-specific state parsers to return
+  more human-readable and explicit account state data.
+- If `jsonParsed` is requested but a parser cannot be found, the field falls
+  back to `base64` encoding, detectable when the `data` field is type `string`.
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "apiVersion": "2.0.15", "slot": 341197933 },
+    "value": [
+      {
+        // !hover pubkey
+        "pubkey": "BGocb4GEpbTFm8UFV2VsDSaBXHELPfAXrvd4vtt8QWrA",
+        // !hover(1:27) account
+        "account": {
+          "data": {
+            "program": "spl-token",
+            "parsed": {
+              "info": {
+                "isNative": false,
+                "mint": "2cHr7QS3xfuSV8wdxo3ztuF4xbiarF6Nrgx3qpx3HzXR",
+                "owner": "A1TMhSGzQxMr1TboBKtgixKz1sS6REASMxPo1qsyTSJd",
+                "state": "initialized",
+                "tokenAmount": {
+                  "amount": "420000000000000",
+                  "decimals": 6,
+                  "uiAmount": 420000000.0,
+                  "uiAmountString": "420000000"
+                }
+              },
+              "type": "account"
+            },
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 2039280,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 18446744073709551615,
+          "space": 165
+        }
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+!type array
+
+An array of JSON objects containing:
+
+##### !! pubkey
+
+!type string
+
+The account Pubkey as base-58 encoded string
+
+##### !! account
+
+!type object
+
+A JSON object containing:
+
+- `lamports: <u64>` - number of lamports assigned to this account, as a u64
+- `owner: <string>` - base-58 encoded Pubkey of the program this account has
+  been assigned to
+- `data: <string|[string,encoding]|object>` - Token state data associated with the account. Format depends on encoding parameter:
+  - If the encoding parameter is left as the deprecated default of `binary`, this will be a string containing encoded binary data.
+  - If `base58`, `base64`, or `base64+zstd` is specified, this will be an array, where the first element is the encoded data string and the second element is the encoding format.
+  - If `jsonParsed` is specified, this will be JSON format `{<program>: <state>}`.
+- `executable: <bool>` - boolean indicating if the account contains a program
+  (and is strictly read-only)
+- `rentEpoch: <u64>` - the epoch at which this account will next owe rent, as
+  u64
+- `space: <u64>` - the data size of the account
+
+When the data is requested with the `jsonParsed` encoding a format similar to
+that of the [Token Balances Structure](/docs/rpc/json-structures#token-balances)
+can be expected inside the structure, both for the `tokenAmount` and the
+`delegatedAmount` - with the latter being an optional object.
+
+</APIMethod>
+---
+title: getTokenLargestAccounts
+hideTableOfContents: true
+h1: getTokenLargestAccounts RPC Method
+---
+
+Returns the 20 largest accounts of a particular SPL Token type.
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getTokenLargestAccounts",
+  "params": [
+    // !hover pubkey
+    "3wyAj7Rt1TWVPZVteFJPLa26JmLvdb1CAKEFZm3NY75E",
+    // !hover(1:3) 1
+    {
+      // !hover commitment
+      "commitment": "finalized"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover pubkey
+let mint = address("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+
+let largestHolders = await rpc.getTokenLargestAccounts(mint).send();
+
+console.log(largestHolders);
+```
+
+```ts !!request title="web3.js"
+import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover pubkey
+let mint = new PublicKey!("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+
+let largestHolders = await connection.getTokenLargestAccounts(mint);
+
+console.log(largestHolders);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover pubkey
+    let mint = pubkey!("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+
+    let largest_holders = client.get_token_largest_accounts(&mint).await?;
+
+    println!("{:#?}", largest_holders);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! pubkey
+
+!type string
+!required
+
+Pubkey of the token Mint to query, as base-58 encoded string
+
+#### !! 1
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 1114 },
+    // !hover(1:16) result
+    "value": [
+      {
+        // !hover address
+        "address": "FYjHNoFtSQ5uijKrZFyYAxvEr87hsKXkXcxkcmkBAf4r",
+        // !hover amount
+        "amount": "771",
+        // !hover decimals
+        "decimals": 2,
+        // !hover uiAmount
+        "uiAmount": 7.71,
+        // !hover uiAmountString
+        "uiAmountString": "7.71"
+      },
+      {
+        "address": "BnsywxTcaYeNUtzrPxQUvzAWxfzZe3ZLUJ4wMMuLESnu",
+        "amount": "229",
+        "decimals": 2,
+        "uiAmount": 2.29,
+        "uiAmountString": "2.29"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+!type array
+
+An array of JSON objects containing:
+
+##### !! address
+
+!type string
+
+The address of the token account
+
+##### !! amount
+
+!type string
+
+The raw token account balance without decimals, a string representation of u64
+
+##### !! decimals
+
+!type u8
+
+Number of base 10 digits to the right of the decimal place
+
+##### !! uiAmount
+
+!type number | null
+
+The token account balance, using mint-prescribed decimals **DEPRECATED**
+
+##### !! uiAmountString
+
+!type string
+
+The token account balance as a string, using mint-prescribed decimals
+
+</APIMethod>
+---
+title: getTokenSupply
+hideTableOfContents: true
+h1: getTokenSupply RPC Method
+---
+
+Returns the total supply of an SPL Token type.
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "getTokenSupply",
+  "params": [
+    // !hover pubkey
+    "3wyAj7Rt1TWVPZVteFJPLa26JmLvdb1CAKEFZm3NY75E",
+    // !hover(1:3) 1
+    {
+      // !hover commitment
+      "commitment": "finalized"
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import { address, createSolanaRpc } from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover pubkey
+let mint = address("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+
+let tokenSupply = await rpc.getTokenSupply(mint).send();
+
+console.log(tokenSupply);
+```
+
+```ts !!request title="web3.js"
+import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover pubkey
+let mint = new PublicKey!("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+
+let tokenSupply = await connection.getTokenSupply(mint);
+
+console.log(tokenSupply);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover pubkey
+    let mint = pubkey!("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+
+    let token_supply = client.get_token_supply(&mint).await?;
+
+    println!("{:#?}", token_supply);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! pubkey
+
+!type string
+!required
+
+Pubkey of the token Mint to query, as base-58 encoded string
+
+#### !! 1
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+The commitment describes how finalized a block is at that point in time. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 1114 },
+    // !hover(1:6) result
+    "value": {
+      // !hover amount
+      "amount": "100000",
+      // !hover decimals
+      "decimals": 2,
+      // !hover uiAmount
+      "uiAmount": 1000,
+      // !hover uiAmountString
+      "uiAmountString": "1000"
+    }
+  },
+  "id": 1
+}
+```
+
+!type object
+
+A JSON object containing:
+
+##### !! amount
+
+!type string
+
+The raw total token supply without decimals, a string representation of u64
+
+##### !! decimals
+
+!type u8
+
+Number of base 10 digits to the right of the decimal place
+
+##### !! uiAmount
+
+!type number | null
+!deprecated
+
+The total token supply, using mint-prescribed decimals
+
+##### !! uiAmountString
+
+!type string
+
+The total token supply as a string, using mint-prescribed decimals
+
+</APIMethod>
+---
+title: sendTransaction
+hideTableOfContents: true
+h1: sendTransaction RPC Method
+---
+
+Submits a signed transaction to the cluster for processing.
+
+This method does not alter the transaction in any way; it relays the transaction
+created by clients to the node as-is.
+
+If the node's rpc service receives the transaction, this method immediately
+succeeds, without waiting for any confirmations. A successful response from this
+method does not guarantee the transaction is processed or confirmed by the
+cluster.
+
+While the rpc service will reasonably retry to submit it, the transaction could
+be rejected if transaction's `recent_blockhash` expires before it lands.
+
+Use [`getSignatureStatuses`](/docs/rpc/http/getsignaturestatuses) to ensure a
+transaction is processed and confirmed.
+
+Before submitting, the following preflight checks are performed:
+
+1. The transaction signatures are verified
+2. The transaction is simulated against the bank slot specified by the preflight
+   commitment. On failure an error will be returned. Preflight checks may be
+   disabled if desired. It is recommended to specify the same commitment and
+   preflight commitment to avoid confusing behavior.
+
+The returned signature is the first signature in the transaction, which is used
+to identify the transaction
+([transaction id](/docs/references/terminology#transaction-id)). This identifier
+can be easily extracted from the transaction data before submission.
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "sendTransaction",
+  "params": [
+    // !hover transaction
+    "4hXTCkRzt9WyecNzV1XPgCDfGAZzQKNxLXgynz5QDuWWPSAZBZSHptvWRL3BjCvzUXRdKvHL2b7yGrRQcWyaqsaBCncVG7BFggS8w9snUts67BSh3EqKpXLUm5UMHfD7ZBe9GhARjbNQMLJ1QD3Spr6oMTBU6EhdB4RD8CP2xUxr2u3d6fos36PD98XS6oX8TQjLpsMwncs5DAMiD4nNnR8NBfyghGCWvCVifVwvA8B8TJxE1aiyiv2L429BCWfyzAme5sZW8rDb14NeCQHhZbtNqfXhcp2tAnaAT"
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import {
+  createSolanaRpc,
+  type Base64EncodedWireTransaction,
+} from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover transaction
+const base64Tx =
+  "AbC/XNkPUUZ7/51SaG1wbG0ojrWHIGzVL73M8hRnDr73RkBAZc0ZnikluvcCeprAmqHDJrcPxPUbvEJMVBIiVQeAAQABAzfDSQC/GjcggrLsDpYz7jAlT+Gca846HqtFb8UQMM9cCWPIi4AX32PV8HrY7/1WgoRc3IATttceZsUMeQ1qx7UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIgsVWEgMTiOYp63gTtuYGw+izfm6wKQdivpiXQBpNnYAQICAAEMAgAAAEBCDwAAAAAAAA==";
+
+const signature = await rpc
+  .sendTransaction(base64Tx as Base64EncodedWireTransaction, {
+    encoding: "base64",
+  })
+  .send();
+
+console.log(signature);
+```
+
+```ts !!request title="web3.js"
+import {
+  Connection,
+  VersionedTransaction,
+  clusterApiUrl,
+} from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+const base64Tx =
+  "AbuRLtc5C9bZtAUT4F4Y2H5SRRUK1HwOFZOK3V4qm/78MDJt+M2de/RCCaI3iTyodDepmrkUWbss0XRHS0lk5AOAAQABAzfDSQC/GjcggrLsDpYz7jAlT+Gca846HqtFb8UQMM9cCWPIi4AX32PV8HrY7/1WgoRc3IATttceZsUMeQ1qx7UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2dTRgcJmzcoGH1R3c2WqtHah2H19KvbC1p6BxLDqfoAQICAAEMAgAAAADKmjsAAAAAAA==";
+
+// !hover transaction
+let tx = VersionedTransaction.deserialize(Buffer.from(base64Tx, "base64"));
+
+let sig = await connection.sendTransaction(tx);
+
+console.log(sig);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use base64::{Engine as _, engine::general_purpose};
+use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
+use solana_commitment_config::{CommitmentConfig, CommitmentLevel};
+use solana_sdk::transaction::VersionedTransaction;
+use solana_transaction_status_client_types::UiTransactionEncoding;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover transaction
+    let b64_tx = "AbuRLtc5C9bZtAUT4F4Y2H5SRRUK1HwOFZOK3V4qm/78MDJt+M2de/RCCaI3iTyodDepmrkUWbss0XRHS0lk5AOAAQABAzfDSQC/GjcggrLsDpYz7jAlT+Gca846HqtFb8UQMM9cCWPIi4AX32PV8HrY7/1WgoRc3IATttceZsUMeQ1qx7UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2dTRgcJmzcoGH1R3c2WqtHah2H19KvbC1p6BxLDqfoAQICAAEMAgAAAADKmjsAAAAAAA==";
+    let tx_bytes = general_purpose::STANDARD.decode(b64_tx).unwrap();
+    let tx: VersionedTransaction = bincode::deserialize(&tx_bytes).unwrap();
+
+    // !hover(1:7) config
+    let config = RpcSendTransactionConfig {
+        // !hover skipPreflight
+        skip_preflight: true,
+        // !hover preflightCommitment
+        preflight_commitment: CommitmentLevel::Finalized.into(),
+        // !hover encoding
+        encoding: UiTransactionEncoding::Base64.into(),
+        // !hover maxRetries
+        max_retries: None,
+        // !hover  minContextSlot
+        min_context_slot: None,
+    };
+
+    match client.send_transaction_with_config(&tx, config).await {
+        Ok(signature) => println!("Transaction Signature: {}", signature),
+        Err(err) => eprintln!("Error transferring tokens: {}", err),
+    }
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! transaction
+
+!type string
+!required
+
+Fully-signed Transaction, as encoded string.
+
+#### !! config
+
+!type object
+
+Configuration object containing the following fields:
+
+##### !! encoding
+
+!type string
+!values base58 base64
+!default base58
+
+Encoding used for the transaction data. Values: `base58` (_slow_,
+**DEPRECATED**), or `base64`.
+
+##### !! skipPreflight
+
+!type bool
+
+When `true`, skip the preflight transaction checks. Default: `false`.
+
+##### !! preflightCommitment
+
+!type string
+
+Commitment level to use for preflight. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+Default `finalized`.
+
+##### !! maxRetries
+
+!type usize
+
+Maximum number of times for the RPC node to retry sending the transaction to the
+leader. If this parameter not provided, the RPC node will retry the transaction
+until it is finalized or until the blockhash expires.
+
+##### !! minContextSlot
+
+!type number
+!optional
+
+Set the minimum slot at which to perform preflight transaction checks
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  // !hover result
+  "result": "2id3YC2jK9G5Wo2phDx4gJVAew8DcY5NAojnVuao8rkxwPYPe8cSwE5GzhEgJA2y8fVjDEo6iR6ykBvDxrTQrtpb",
+  "id": 1
+}
+```
+
+!type string
+
+First Transaction Signature embedded in the transaction, as base-58 encoded
+string ([transaction id](/docs/references/terminology#transaction-id))
+
+</APIMethod>
+---
+title: simulateTransaction
+hideTableOfContents: true
+h1: simulateTransaction RPC Method
+---
+
+Simulate sending a transaction
+
+<APIMethod>
+
+```jsonc !!request curl
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "simulateTransaction",
+  "params": [
+    // !hover transaction
+    "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEEjNmKiZGiOtSZ+g0//wH5kEQo3+UzictY+KlLV8hjXcs44M/Xnr+1SlZsqS6cFMQc46yj9PIsxqkycxJmXT+veJjIvefX4nhY9rY+B5qreeqTHu4mG6Xtxr5udn4MN8PnBt324e51j94YQl285GzN2rYa/E2DuQ0n/r35KNihi/zamQ6EeyeeVDvPVgUO2W3Lgt9hT+CfyqHvIa11egFPCgEDAwIBAAkDZAAAAAAAAAA=",
+    // !hover(1:5) config
+    {
+      // !hover commitment
+      "commitment": "confirmed",
+      // !hover encoding
+      "encoding": "base64",
+      // !hover replaceRecentBlockhash
+      "replaceRecentBlockhash": true
+    }
+  ]
+}
+```
+
+```ts !!request title="Kit"
+import {
+  createSolanaRpc,
+  type Base64EncodedWireTransaction,
+} from "@solana/kit";
+
+const rpc_url = "https://api.devnet.solana.com";
+const rpc = createSolanaRpc(rpc_url);
+
+// !hover(1:2) transaction
+const base64Tx: Base64EncodedWireTransaction =
+  "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEEjNmKiZGiOtSZ+g0//wH5kEQo3+UzictY+KlLV8hjXcs44M/Xnr+1SlZsqS6cFMQc46yj9PIsxqkycxJmXT+veJjIvefX4nhY9rY+B5qreeqTHu4mG6Xtxr5udn4MN8PnBt324e51j94YQl285GzN2rYa/E2DuQ0n/r35KNihi/zamQ6EeyeeVDvPVgUO2W3Lgt9hT+CfyqHvIa11egFPCgEDAwIBAAkDZAAAAAAAAAA=" as Base64EncodedWireTransaction;
+
+// !hover(1:9) config
+let simulateTxConfig = {
+  // !hover commitment
+  commitment: "finalized",
+  // !hover encoding
+  encoding: "base64",
+  // !hover replaceRecentBlockhash
+  replaceRecentBlockhash: true,
+  // !hover sigVerify
+  sigVerify: false,
+  // !hover minContextSlot
+  minContextSlot: undefined,
+  // !hover innerInstructions
+  innerInstructions: undefined,
+  // !hover accounts
+  accounts: undefined,
+};
+
+let simulateResult = await rpc
+  .simulateTransaction(base64Tx, simulateTxConfig)
+  .send();
+
+console.log(simulateResult);
+```
+
+```ts !!request title="web3.js"
+import {
+  Connection,
+  VersionedTransaction,
+  clusterApiUrl,
+  type SimulateTransactionConfig,
+} from "@solana/web3.js";
+
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+// !hover(1:2) transaction
+const base64Tx =
+  "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEEjNmKiZGiOtSZ+g0//wH5kEQo3+UzictY+KlLV8hjXcs44M/Xnr+1SlZsqS6cFMQc46yj9PIsxqkycxJmXT+veJjIvefX4nhY9rY+B5qreeqTHu4mG6Xtxr5udn4MN8PnBt324e51j94YQl285GzN2rYa/E2DuQ0n/r35KNihi/zamQ6EeyeeVDvPVgUO2W3Lgt9hT+CfyqHvIa11egFPCgEDAwIBAAkDZAAAAAAAAAA=";
+
+let tx = VersionedTransaction.deserialize(Buffer.from(base64Tx, "base64"));
+
+// !hover(1:9) config
+let simulateTxConfig: SimulateTransactionConfig = {
+  // !hover commitment
+  commitment: "finalized",
+  // !hover replaceRecentBlockhash
+  replaceRecentBlockhash: true,
+  // !hover sigVerify
+  sigVerify: false,
+  // !hover minContextSlot
+  minContextSlot: undefined,
+  // !hover innerInstructions
+  innerInstructions: undefined,
+  // !hover accounts
+  accounts: undefined,
+};
+
+let simulateResult = await connection.simulateTransaction(tx, simulateTxConfig);
+
+console.log(simulateResult);
+```
+
+```rs !!request title="Rust"
+use anyhow::Result;
+use base64::{Engine as _, engine::general_purpose};
+use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSimulateTransactionConfig};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::transaction::VersionedTransaction;
+use solana_transaction_status_client_types::UiTransactionEncoding;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::new_with_commitment(
+        String::from("https://api.devnet.solana.com"),
+        CommitmentConfig::confirmed(),
+    );
+
+    // !hover(1:2) transaction
+    let b64_tx = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEEjNmKiZGiOtSZ+g0//wH5kEQo3+UzictY+KlLV8hjXcs44M/Xnr+1SlZsqS6cFMQc46yj9PIsxqkycxJmXT+veJjIvefX4nhY9rY+B5qreeqTHu4mG6Xtxr5udn4MN8PnBt324e51j94YQl285GzN2rYa/E2DuQ0n/r35KNihi/zamQ6EeyeeVDvPVgUO2W3Lgt9hT+CfyqHvIa11egFPCgEDAwIBAAkDZAAAAAAAAAA=";
+    let tx_bytes = general_purpose::STANDARD.decode(b64_tx).unwrap();
+    let tx: VersionedTransaction = bincode::deserialize(&tx_bytes).unwrap();
+
+    // !hover(1:9) config
+    let config = RpcSimulateTransactionConfig {
+        // !hover commitment
+        commitment: CommitmentConfig::finalized().into(),
+        // !hover encoding
+        encoding: UiTransactionEncoding::Base64.into(),
+        // !hover replaceRecentBlockhash
+        replace_recent_blockhash: true,
+        // !hover sigVerify
+        sig_verify: false,
+        // !hover minContextSlot
+        min_context_slot: None,
+        // !hover innerInstructions
+        inner_instructions: false,
+        // !hover accounts
+        accounts: None,
+    };
+
+    let simulate_result = client.simulate_transaction_with_config(&tx, config).await?;
+
+    println!("{:#?}", simulate_result);
+
+    Ok(())
+}
+```
+
+### !params
+
+#### !! transaction
+
+!type string
+!required
+
+Transaction, as an encoded string.
+
+<Callout type="info">
+  The transaction must have a valid blockhash, but is not required to be signed.
+</Callout>
+
+#### !! config
+
+!type object
+!optional
+
+Configuration object containing the following fields:
+
+##### !! commitment
+
+!type string
+
+Commitment level to simulate the transaction at. See
+[Configuring State Commitment](/docs/rpc#configuring-state-commitment).
+Default `finalized`.
+
+##### !! encoding
+
+!type string
+!values base58 base64
+!default base58
+
+Encoding used for the transaction data. Values: `base58` (_slow_,
+**DEPRECATED**), or `base64`.
+
+
+##### !! replaceRecentBlockhash
+
+!type bool
+!defaultValue false
+
+If `true` the transaction recent blockhash will be replaced with the most recent
+blockhash (conflicts with `sigVerify`)
+
+##### !! sigVerify
+
+!type bool
+!defaultValue false
+
+If `true` the transaction signatures will be verified (conflicts with
+`replaceRecentBlockhash`)
+
+##### !! minContextSlot
+
+!type number
+!optional
+
+The minimum slot that the request can be evaluated at
+
+
+##### !! innerInstructions
+
+!type bool
+!defaultValue false
+
+If `true` the response will include
+CPI instructions (`innerInstructions`). These inner
+instructions will be `jsonParsed` where possible, otherwise `json`.
+
+##### !! accounts
+
+!type object
+!optional
+
+Accounts configuration object containing the following fields:
+
+- `addresses`: An array of accounts to return, as base-58 encoded strings
+- `encoding`: Encoding for returned Account data. Note: `jsonParsed` encoding
+  attempts to use program-specific state parsers to return more human-readable
+  and explicit account state data. If `jsonParsed` is requested but a
+  [parser cannot be found](https://github.com/solana-labs/solana/blob/cfd0a00ae2ba85a6d76757df8b4fa38ed242d185/account-decoder/src/parse_account_data.rs#L98-L100),
+  the field falls back to `base64` encoding, detectable when the returned
+  `accounts.data` field is type `string`.
+
+### !!result
+
+```jsonc !response
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": {
+      "apiVersion": "2.3.3",
+      "slot": 393226680
+    },
+    // !hover(1:18) value
+    "value": {
+      // !hover accounts
+      "accounts": null,
+      // !hover err
+      "err": null,
+      // !hover innerInstructions
+      "innerInstructions": null,
+      // !hover loadedAccountsDataSize
+      "loadedAccountsDataSize": 413,
+      // !hover(1:6) logs
+      "logs": [
+        "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb invoke [1]",
+        "Program log: Instruction: Transfer",
+        "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb consumed 1714 of 200000 compute units",
+        "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb success"
+      ],
+      // !hover(1:4) replacementBlockhash
+      "replacementBlockhash": {
+        "blockhash": "6oFLsE7kmgJx9PjR4R63VRNtpAVJ648gCTr3nq5Hihit",
+        "lastValidBlockHeight": 381186895
+      },
+      // !hover returnData
+      "returnData": null,
+      // !hover unitsConsumed
+      "unitsConsumed": 1714
+    }
+  },
+  "id": 1
+}
+```
+
+!type object
+
+The result will contain:
+
+##### !! accounts
+
+!type array|null
+
+Array of accounts with the same length as the `accounts.addresses` array in the
+request. Each element is either:
+
+- `null` - if the account doesn't exist or if `err` is not null
+- An object containing:
+  - `lamports: <u64>` - number of lamports assigned to this account
+  - `owner: <string>` - base-58 encoded Pubkey of the program this account has
+    been assigned to
+  - `data: <[string, encoding]|object>` - data associated with the account,
+    either as encoded binary data or JSON format `{<program>: <state>}`
+  - `executable: <bool>` - boolean indicating if the account contains a program
+  - `rentEpoch: <u64>` - the epoch at which this account will next owe rent
+
+##### !! err
+
+!type object|string|null
+
+Error if transaction failed, null if transaction succeeded. See
+[TransactionError definitions](https://github.com/solana-labs/solana/blob/c0c60386544ec9a9ec7119229f37386d9f070523/sdk/src/transaction/error.rs#L13)
+
+##### !! innerInstructions
+
+!type object|undefined
+
+Defined only if `innerInstructions` was set to `true`. The value is a list of
+[inner instructions](/docs/rpc/json-structures#inner-instructions).
+
+##### !! loadedAccountsDataSize
+
+!type u32|undefined
+
+The number of bytes of all accounts loaded by this transaction
+
+##### !! logs
+
+!type array|null
+
+Array of log messages the transaction instructions output during execution, null
+if simulation failed before the transaction was able to execute
+
+##### !! replacementBlockhash
+
+!type object|null
+
+The blockhash used to simulate the transaction, containing:
+
+- `blockhash: <string>` - the blockhash used to simulate the transaction
+- `lastValidBlockHeight: <u64>` - the last valid block height at which the
+  blockhash is valid
+
+##### !! returnData
+
+!type object|null
+
+The most-recent return data generated by an instruction in the transaction,
+containing:
+
+- `programId: <string>` - the program that generated the return data, as base-58
+  encoded Pubkey
+- `data: <[string, encoding]>` - the return data itself, as base-64 encoded
+  binary data
+
+##### !! unitsConsumed
+
+!type u64|undefined
+
+The number of compute budget units consumed during the processing of this
+transaction
+
+</APIMethod>
+
+
+
+## Example Result
+
+- The `JsonParsed` example shows the simulation result for a transaction 
+that creates an [associated token account](/docs/tokens/basics/create-token-account#how-to-create-an-associated-token-account).
+- The `Json` example shows the simulation result for a transaction with a CPI (`innerInstructions`) that can't be parsed.
+
+<CodeTabs>
+
+```json !! title="JsonParsed Inner Instructions"
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": {
+      "apiVersion": "3.0.10",
+      "slot": 1282
+    },
+    "value": {
+      "accounts": null,
+      "err": null,
+      "fee": 5000,
+      "innerInstructions": [
+        {
+          "index": 0,
+          "instructions": [
+            {
+              "parsed": {
+                "info": {
+                  "extensionTypes": [
+                    "immutableOwner"
+                  ],
+                  "mint": "AH2uKiJxRXuQbUZQpCoyeujLLKNHvUATXxBVEBWMof92"
+                },
+                "type": "getAccountDataSize"
+              },
+              "program": "spl-token",
+              "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+              "stackHeight": 2
+            },
+            {
+              "parsed": {
+                "info": {
+                  "lamports": 2039280,
+                  "newAccount": "Bgig53phxYuoiB2mveeBYGs9WpQPoUCJfDBGwpgWnkP",
+                  "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                  "source": "23g1K6sr2bevNwLYPoB79jzEQtErioYQ8mpUa76xA6yu",
+                  "space": 165
+                },
+                "type": "createAccount"
+              },
+              "program": "system",
+              "programId": "11111111111111111111111111111111",
+              "stackHeight": 2
+            },
+            {
+              "parsed": {
+                "info": {
+                  "account": "Bgig53phxYuoiB2mveeBYGs9WpQPoUCJfDBGwpgWnkP"
+                },
+                "type": "initializeImmutableOwner"
+              },
+              "program": "spl-token",
+              "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+              "stackHeight": 2
+            },
+            {
+              "parsed": {
+                "info": {
+                  "account": "Bgig53phxYuoiB2mveeBYGs9WpQPoUCJfDBGwpgWnkP",
+                  "mint": "AH2uKiJxRXuQbUZQpCoyeujLLKNHvUATXxBVEBWMof92",
+                  "owner": "23g1K6sr2bevNwLYPoB79jzEQtErioYQ8mpUa76xA6yu"
+                },
+                "type": "initializeAccount3"
+              },
+              "program": "spl-token",
+              "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+              "stackHeight": 2
+            }
+          ]
+        }
+      ],
+      "loadedAccountsDataSize": 238800,
+      "loadedAddresses": {
+        "readonly": [],
+        "writable": []
+      },
+      "logs": [
+        "Program ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL invoke [1]",
+        "Program log: Create",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA invoke [2]",
+        "Program log: Instruction: GetAccountDataSize",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA consumed 1595 of 193103 compute units",
+        "Program return: TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA pQAAAAAAAAA=",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA success",
+        "Program 11111111111111111111111111111111 invoke [2]",
+        "Program 11111111111111111111111111111111 success",
+        "Program log: Initialize the associated token account",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA invoke [2]",
+        "Program log: Instruction: InitializeImmutableOwner",
+        "Program log: Please upgrade to SPL Token 2022 for immutable owner support",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA consumed 1405 of 186490 compute units",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA success",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA invoke [2]",
+        "Program log: Instruction: InitializeAccount3",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA consumed 4214 of 182608 compute units",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA success",
+        "Program ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL consumed 21889 of 200000 compute units",
+        "Program ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL success"
+      ],
+      "postBalances": [
+        996484120,
+        2039280,
+        1,
+        1461600,
+        731913600,
+        929020800
+      ],
+      "postTokenBalances": [
+        {
+          "accountIndex": 1,
+          "mint": "AH2uKiJxRXuQbUZQpCoyeujLLKNHvUATXxBVEBWMof92",
+          "owner": "23g1K6sr2bevNwLYPoB79jzEQtErioYQ8mpUa76xA6yu",
+          "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "uiTokenAmount": {
+            "amount": "0",
+            "decimals": 2,
+            "uiAmount": 0.0,
+            "uiAmountString": "0"
+          }
+        }
+      ],
+      "preBalances": [
+        998528400,
+        0,
+        1,
+        1461600,
+        731913600,
+        929020800
+      ],
+      "preTokenBalances": [],
+      "replacementBlockhash": {
+        "blockhash": "3ojhhRUVJAfsFhaJ3ka7cmwmAHQizYWvDtykiSVVnnET",
+        "lastValidBlockHeight": 1432
+      },
+      "returnData": null,
+      "unitsConsumed": 21889
+    }
+  },
+  "id": 1
+}
+```
+
+```json !! title="Json Inner Instructions"
+{
+  "jsonrpc": "2.0",
+  "result": {
+      "context": {
+        "apiVersion": "3.0.11",
+        "slot": 1
+      },
+      "value": {
+        "accounts": [],
+        "err": null,
+        "fee": 5000,
+        "innerInstructions": [
+          {
+            "index": 0,
+            "instructions": [
+              {
+                "accounts": [
+                  "CcmSqTwD2WYXBPdhgnsQNekvdz2vxdTnWrf5CdBP39UT",
+                  "8vpJSGjxj6BND37FqkCJgrHE75zd6QgQ4LzM4h6jsJam",
+                  "9kCz3JnmSXCr2wYTsLNtgG7HyULoL5qfyr6doA6tB2SQ"
+                ],
+                "data": "8rzLfWGsaE6zkTU3f94HPD",
+                "programId": "FXCiN987MbLSkuHtTG6pSYjgNHQQJFwsKkRmNpB7YaYE",
+                "stackHeight": 2
+              }
+            ]
+          }
+        ],
+        "loadedAccountsDataSize": 366738,
+        "loadedAddresses": {
+          "readonly": [],
+          "writable": []
+        },
+        "logs": [
+          "Program GiBw3Ed2rnEtiM7AjtkS6jb9D6vvGvQ8pztVfvTRFX43 invoke [1]",
+          "Program log: Instruction: Initialize",
+          "Program FXCiN987MbLSkuHtTG6pSYjgNHQQJFwsKkRmNpB7YaYE invoke [2]",
+          "Program log: Instruction: CpiInstruction",
+          "Program log: Data: 1",
+          "Program FXCiN987MbLSkuHtTG6pSYjgNHQQJFwsKkRmNpB7YaYE consumed 1572 of 196283 compute units",
+          "Program FXCiN987MbLSkuHtTG6pSYjgNHQQJFwsKkRmNpB7YaYE success",
+          "Program GiBw3Ed2rnEtiM7AjtkS6jb9D6vvGvQ8pztVfvTRFX43 consumed 5560 of 200000 compute units",
+          "Program GiBw3Ed2rnEtiM7AjtkS6jb9D6vvGvQ8pztVfvTRFX43 success"
+        ],
+        "postBalances": [
+          499999999999995000,
+          0,
+          0,
+          0,
+          1141440,
+          1141440
+        ],
+        "postTokenBalances": [],
+        "preBalances": [
+          500000000000000000,
+          0,
+          0,
+          0,
+          1141440,
+          1141440
+        ],
+        "preTokenBalances": [],
+        "replacementBlockhash": null,
+        "returnData": null,
+        "unitsConsumed": 5560
+      }
+    }
+  },
+  "id": 1
+}
+```
+
+</CodeTabs>
