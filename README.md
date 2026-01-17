@@ -38,9 +38,6 @@ The **Kora Rent Reclaim Bot** automates the recovery of this capital. It acts as
     *   Logs the action for transparency.
 
 ### 🎯 Supported Reclamation Scenarios
-The bot targets specific "Rent Leaks" in the Kora infrastructure.
-
-### 🎯 Supported Reclamation Scenarios
 The bot currently supports 3 distinct strategies for identifying and reclaiming rent.
 
 #### 1. Kora Seed Accounts (Internal State)
