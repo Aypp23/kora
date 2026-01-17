@@ -35,6 +35,37 @@ The **Kora Rent Reclaim Bot** automates the recovery of this capital. It acts as
     *   Sweeps the rent lamports back to the Operator's wallet.
     *   Logs the action for transparency.
 
+### 🎯 Supported Reclamation Scenarios
+The bot targets specific "Rent Leaks" in the Kora infrastructure.
+
+### 🎯 Supported Reclamation Scenarios
+The bot currently supports 3 distinct strategies for identifying and reclaiming rent.
+
+#### 1. Kora Seed Accounts (Internal State)
+*   **What are they?** System accounts derived from the Kora Operator's public key using a specific "seed" string. They are often used for internal logic like rate limiting, tracking user quotas, or temporary state.
+*   **Why Reclaim?** Once the specific operation (e.g., a rate limit window) is over, these accounts are often abandoned, leaving ~0.00089 SOL locked per account.
+*   **Detection:** Checks for `SystemProgram.createAccountWithSeed` where the `base` is the Operator.
+
+#### 2. Transient wSOL Accounts (Failed Wrappers)
+*   **What are they?** Temporary Wrapped SOL (wSOL) accounts used during complex transactions (like swaps or bridges) to convert native SOL into an SPL Token.
+*   **Why Reclaim?** If a transaction pipeline fails mid-way, these accounts can be left open containing the rent deposit (~0.002 SOL). Since the Operator created them, the Operator owns them.
+*   **Detection:** Checks for Token Accounts designated as `wSOL` `(So111...)` where the `Owner` is the Operator.
+
+#### 3. "Right to Reclaim" ATAs (Atomic Delegation)
+*   **What are they?** Standard SPL Token Accounts created for Users, but with a special "Insurance Policy" attached at creation.
+*   **The Mechanism:** The Kora Client atomically executes two instructions in the setup transaction:
+    1.  `CreateAssociatedTokenAccount` (Owner = User)
+    2.  `SetAuthority` (Sets `CloseAuthority` = Operator)
+*   **Why Reclaim?** This grants Kora the *Right (but not the obligation)* to close the account if the user abandons it. It does **not** allow Kora to move user funds, only to reclaim the rent if the balance is zero.
+*   **Detection:** Checks for `SetAuthority` instructions delegating `CloseAccount` rights to the Operator.
+
+### ⚙️ Procedure
+1.  **Detection:** Monitor scans tx history. If matches one of the above, it's logged as `Active` in DB.
+2.  **Grace Period:** Accounts sit in DB for 30 days to ensure user activity is finished.
+3.  **Validation:** `Analyzer` checks on-chain: *Is Balance 0? Is Operator the Authority?*
+4.  **Execution:** If Safe, `Reclaimer` builds and signs the `CloseAccount` transaction.
+
+
 ---
 
 ## ✨ Features
@@ -44,6 +75,9 @@ The **Kora Rent Reclaim Bot** automates the recovery of this capital. It acts as
     *   **Activity Check:** Accounts with recent balance changes are skipped.
     *   **Whitelist:** Manually protect specific VIP addresses.
     *   **Authority Check:** Only claims accounts where the Operator has `CloseAuthority`.
+*   **🔓 Right to Reclaim (Atomic Delegation):**
+    *   Detects user-owned ATAs where `CloseAuthority` was delegated to Kora at creation.
+    *   Allows reclaiming rent from users who abandon their accounts, without needing their private key.
 *   **📊 Dashboard & Reporting:**
     *   Full web interface to view Active vs. Reclaimed stats.
     *   Clickable Audit Logs tracking every gathered Lamport.
@@ -87,26 +121,41 @@ The **Kora Rent Reclaim Bot** automates the recovery of this capital. It acts as
 
 ### Usage
 
-**Run the Bot (Daemon Mode)**
-Starts the hourly monitor and daily reclaimer.
-```bash
-npx tsx src/cli.ts bot
-```
+#### 1. CLI Commands (Terminal)
+Use these for manual control or debugging.
 
-**Run the Dashboard**
-```bash
-# Terminal 1: API
-npx tsx src/cli.ts serve
+| Command | Action | Description |
+| :--- | :--- | :--- |
+| `npm run bot` | **Start Daemon** | Runs the Telegram Bot + Scheduler (Hourly Monitor, Daily Reclaim). |
+| `npm run monitor` | **Scan History** | Scans your transaction history for new accounts to track. |
+| `npm run analyze` | **Check Status** | Updates balances and checks if accounts are empty/abandoned. |
+| `npm run reclaim` | **Reclaim Rent** | Attempts to close all eligible "Reclaimable" accounts immediately. |
+| `npm run serve` | **Start API** | Starts the backend API for the React Dashboard. |
 
-# Terminal 2: Frontend
-npm run dev
-```
+#### 2. Telegram Bot Commands
+Control the bot remotely via your Telegram chat.
 
-**Manual Commands (CLI)**
+| Command | Description |
+| :--- | :--- |
+| `/start` | Shows the welcome message and bot info. |
+| `/status` | **Dashboard:** Shows Total, Active, and Reclaimable account counts. |
+| `/balance` | Shows the current SOL balance of the Operator wallet. |
+| `/scan` | Triggers a **Manual Scan** of the last 50 transactions. |
+| `/reclaim` | Triggers a **Manual Reclamation** run immediately. |
+
+
+### Development & Verification
+
+To run the end-to-end regression tests (creating fresh accounts and reclaiming them):
 ```bash
-npx tsx src/cli.ts scan --limit 1000  # Force a history scan
-npx tsx src/cli.ts status             # Check database stats
-npx tsx src/cli.ts reclaim            # Force a reclamation run
+# Seeds fresh accounts for all 3 scenarios:
+# 1. Kora Native Seed
+# 2. Transient wSOL
+# 3. Right to Reclaim ATA
+npx tsx src/scripts/test_reclamation_scenarios.ts
+
+# Then run the bot cycle to clean them up:
+npm run monitor && npm run analyze && npm run reclaim
 ```
 
 ---

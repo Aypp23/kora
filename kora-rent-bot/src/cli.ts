@@ -75,8 +75,8 @@ program.command('analyze')
     .description('Check status of sponsored accounts')
     .action(async () => {
         try {
-            const { connection, db } = await getContext();
-            const analyzer = new Analyzer(connection, db);
+            const { connection, db, operatorKeypair } = await getContext();
+            const analyzer = new Analyzer(connection, db, operatorKeypair.publicKey);
             await analyzer.updateAccountStatuses();
         } catch (e: any) {
             console.error(chalk.red('Error:'), e.message);

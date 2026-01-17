@@ -37,15 +37,20 @@ export class Monitor {
         if (!tx.transaction.message.instructions) return;
 
         for (const ix of tx.transaction.message.instructions as any[]) {
-            // Check for System Program instructions
+            // 1. Check for System Program instructions (Seed / Standard Creation)
             if (ix.program === 'system') {
                 if (ix.parsed.type === 'createAccountWithSeed') {
                     await this.handleSeedAccount(ix.parsed.info, signature, tx.blockTime);
                 } else if (ix.parsed.type === 'createAccount') {
-                    // Potential simple creation (like wSOL if followed by init)
-                    // This is harder to track without context, but we can look at the new account
                     await this.handleStandardAccount(ix.parsed.info, signature, tx);
                 }
+            }
+
+            // 2. Check for "Right to Reclaim" directly (SetAuthority)
+            // This catches cases where account creation is internal (CPI) or separate, 
+            // but the SetAuthority is top-level (Atomic Delegation).
+            else if ((ix.program === 'spl-token' || ix.program === 'spl-token-2022') && ix.parsed.type === 'setAuthority') {
+                await this.handleSetAuthority(ix.parsed.info, signature, tx);
             }
         }
     }
@@ -54,86 +59,55 @@ export class Monitor {
         // info: { base, seed, newAccount, lamports, space, owner }
         if (info.base === this.feePayer.toBase58()) {
             console.log(chalk.yellow(`Found Operator-Derived Account: ${info.newAccount} (Seed: ${info.seed})`));
-
-            // Convert unix timestamp (seconds) to ms for JS dates
-            const createdAt = timestamp ? timestamp * 1000 : Date.now();
-
-            await this.db.run(`
-                INSERT OR IGNORE INTO sponsored_accounts (address, type, seed, close_authority, status, rent_amount, last_checked, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `, [
-                info.newAccount,
-                'Seed',
-                info.seed,
-                info.base,
-                'Active',
-                info.lamports,
-                Date.now(),
-                createdAt
-            ]);
+            await this.insertAccount(info.newAccount, 'Seed', info.seed, info.base, info.lamports, timestamp);
         }
     }
 
     async handleStandardAccount(info: any, signature: string, tx: ParsedTransactionWithMeta) {
-        // Check if this account was initialized as a Token Account in the same tx
-        // Look for 'initializeAccount' or 'initializeAccount3' on the same 'newAccount'
         const instructions = tx.transaction.message.instructions as any[];
-        const isTokenInit = instructions.some(ix =>
+
+        // Check for basic Token Initialization ONLY here
+        const initIx = instructions.find(ix =>
             (ix.program === 'spl-token' || ix.program === 'spl-token-2022') &&
             (ix.parsed.type === 'initializeAccount' || ix.parsed.type === 'initializeAccount3') &&
             ix.parsed.info.account === info.newAccount
         );
 
-        if (isTokenInit) {
-            // It's a token account. Check if we (Fee Payer) are the close authority?
-            // Usually initAccount sets the owner/close authority.
-            // We'd need to parse the init instruction to see who the owner is.
-            const initIx = instructions.find(ix =>
-                (ix.program === 'spl-token' || ix.program === 'spl-token-2022') &&
-                (ix.parsed.type === 'initializeAccount' || ix.parsed.type === 'initializeAccount3') &&
-                ix.parsed.info.account === info.newAccount
-            );
-
-            if (initIx) {
-                // info: { account, mint, owner }
-                // For wSOL, mint must be Wrapped SOL.
-                // If owner is FeePayer, then we control it.
-                if (initIx.parsed.info.owner === this.feePayer.toBase58()) {
-                    console.log(chalk.cyan(`Found Operator-Owned Token Account: ${info.newAccount}`));
-
-                    // Check if it's wSOL
-                    if (initIx.parsed.info.mint === 'So11111111111111111111111111111111111111112') {
-                        await this.db.run(`
-                            INSERT OR IGNORE INTO sponsored_accounts (address, type, seed, close_authority, status, rent_amount, last_checked, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        `, [
-                            info.newAccount,
-                            'wSOL',
-                            null,
-                            this.feePayer.toBase58(),
-                            'Active',
-                            info.lamports,
-                            Date.now(),
-                            tx.blockTime ? tx.blockTime * 1000 : Date.now()
-                        ]);
-                    } else {
-                        // Regular ATA explicitly owned by Kora (maybe for other tokens)
-                        await this.db.run(`
-                            INSERT OR IGNORE INTO sponsored_accounts (address, type, seed, close_authority, status, rent_amount, last_checked)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        `, [
-                            info.newAccount,
-                            'ATA',
-                            null,
-                            this.feePayer.toBase58(),
-                            'Active',
-                            info.lamports,
-                            Date.now(),
-                            tx.blockTime ? tx.blockTime * 1000 : Date.now()
-                        ]);
-                    }
-                }
-            }
+        if (initIx && initIx.parsed.info.owner === this.feePayer.toBase58()) {
+            console.log(chalk.cyan(`Found Operator-Owned Token Account: ${info.newAccount}`));
+            const type = initIx.parsed.info.mint === 'So11111111111111111111111111111111111111112' ? 'wSOL' : 'ATA';
+            await this.insertAccount(info.newAccount, type, null, this.feePayer.toBase58(), info.lamports, tx.blockTime);
         }
+    }
+
+    async handleSetAuthority(info: any, signature: string, tx: ParsedTransactionWithMeta) {
+        // info: { account, authority, authorityType, newAuthority }
+        if (
+            (info.authorityType === 'closeAccount' || info.authorityType === 'CloseAccount') &&
+            info.newAuthority === this.feePayer.toBase58()
+        ) {
+            console.log(chalk.magenta(`Found Delegated 'Right to Reclaim' Account: ${info.account}`));
+            // We don't know the rent amount easily without looking up the account, 
+            // but we can default to 0 and let Analyzer fix it, or assume standard rent if needed.
+            // Using 0 ensures we don't block DB insert. Analyzer will fetch real balance.
+            await this.insertAccount(info.account, 'ATA', null, this.feePayer.toBase58(), 0, tx.blockTime);
+        }
+    }
+
+    async insertAccount(address: string, type: string, seed: string | null, closeAuthority: string, rentAmount: number, blockTime?: number | null) {
+        const createdAt = blockTime ? blockTime * 1000 : Date.now();
+        await this.db.run(`
+            INSERT OR IGNORE INTO sponsored_accounts (address, type, seed, close_authority, status, rent_amount, last_checked, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            address,
+            type,
+            seed,
+            closeAuthority,
+            'Active',
+            rentAmount,
+            Date.now(),
+            createdAt
+        ]);
     }
 }

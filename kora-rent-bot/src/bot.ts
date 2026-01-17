@@ -111,7 +111,7 @@ export class BotService {
                 await monitor.scanHistory(50); // Default to last 50
 
                 // Run analyzer mostly to categorize
-                const analyzer = new Analyzer(this.connection, db);
+                const analyzer = new Analyzer(this.connection, db, this.operator.publicKey);
                 await analyzer.updateAccountStatuses();
 
                 ctx.reply('✅ Scan complete! Check /status for results.');
@@ -169,7 +169,7 @@ export class BotService {
                 await monitor.scanHistory(20); // Quick scan
 
                 // Analyze
-                const analyzer = new Analyzer(this.connection, this.db);
+                const analyzer = new Analyzer(this.connection, this.db, this.operator.publicKey);
                 await analyzer.updateAccountStatuses();
 
                 // Alert Check

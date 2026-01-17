@@ -4,7 +4,12 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "monitor": "npx tsx src/cli.ts monitor",
+    "analyze": "npx tsx src/cli.ts analyze",
+    "reclaim": "npx tsx src/cli.ts reclaim",
+    "bot": "npx tsx src/cli.ts bot",
+    "serve": "npx tsx src/cli.ts serve"
   },
   "keywords": [],
   "author": "",
