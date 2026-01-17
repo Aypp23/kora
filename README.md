@@ -2,7 +2,9 @@
 
 A specialised automation tool for **Kora Operators** to monitor sponsored accounts and reclaim locked rent from inactive or abandoned users.
 
-![Dashboard Preview](https://github.com/user-attachments/assets/placeholder)
+Dashboard Preview(if needed)
+
+<img width="1710" height="998" alt="Screenshot 2026-01-17 at 01 06 13" src="https://github.com/user-attachments/assets/c929fb24-f4aa-4087-a791-f47c8c839666" />
 
 ## 📖 The Problem: The Hidden Cost of Sponsorship
 
