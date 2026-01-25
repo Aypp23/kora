@@ -79,14 +79,9 @@ The **Kora Rent Reclaim Bot** automates the entire lifecycle of rent recovery:
 3.  **♻️ Reclaim:** Constructs and signs generic `CloseAccount` transactions for eligible accounts, sweeping the rent lamports back to the Operator's wallet.
 4.  **📉 Report:** Provides real-time ROI tracking via a Web Dashboard and Telegram alerts.
 
-<<<<<<< HEAD
-### 🎯 Supported Reclamation Scenarios
-The bot currently supports 3 distinct strategies for identifying and reclaiming rent.
-=======
 ---
 
 ## 🧠 Deep Dive: Supported Scenarios
->>>>>>> e0d290e (feat: complete roadmap implementation and overhaul documentation)
 
 The bot currently supports three sophisticated identification strategies:
 
