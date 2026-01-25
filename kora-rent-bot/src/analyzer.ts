@@ -4,6 +4,8 @@ import { AccountLayout } from '@solana/spl-token';
 import type { SponsoredAccount } from './db/schema.js';
 import chalk from 'chalk';
 
+import fs from 'fs';
+
 export class Analyzer {
     connection: Connection;
     db: Database;
@@ -15,7 +17,25 @@ export class Analyzer {
         this.operatorAddress = typeof operatorAddressVal === 'string' ? new PublicKey(operatorAddressVal) : operatorAddressVal;
     }
 
+    async syncWhitelist() {
+        if (!fs.existsSync('whitelist.json')) return;
+
+        try {
+            const content = fs.readFileSync('whitelist.json', 'utf-8');
+            const whitelist = JSON.parse(content);
+            if (Array.isArray(whitelist)) {
+                console.log(chalk.blue(`Syncing ${whitelist.length} whitelist entries from file...`));
+                for (const address of whitelist) {
+                    await this.db.run('UPDATE sponsored_accounts SET whitelisted = 1 WHERE address = ?', [address]);
+                }
+            }
+        } catch (e) {
+            console.error(chalk.red('Failed to read whitelist.json:'), e);
+        }
+    }
+
     async updateAccountStatuses() {
+        await this.syncWhitelist();
         console.log(chalk.blue('Updating account statuses...'));
         const accounts = await this.db.all<SponsoredAccount[]>('SELECT * FROM sponsored_accounts WHERE status = ?', ['Active']);
 
@@ -47,10 +67,11 @@ export class Analyzer {
                 account.rent_amount = info.lamports;
             }
 
-            // SAFETY CHECK: Grace Period (30 Days)
-            const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+            // SAFETY CHECK: Grace Period (Configurable, Default 30 Days)
+            const minAgeDays = parseInt(process.env.MIN_AGE_DAYS || '30');
+            const MIN_AGE_MS = minAgeDays * 24 * 60 * 60 * 1000;
             const now = Date.now();
-            if (account.created_at && (now - account.created_at < THIRTY_DAYS_MS)) {
+            if (account.created_at && (now - account.created_at < MIN_AGE_MS)) {
                 console.log(chalk.blue(`⏳ Account ${account.address} is in Grace Period (${Math.floor((now - account.created_at) / (1000 * 60 * 60 * 24))} days old). Skipping.`));
                 continue;
             }

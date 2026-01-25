@@ -4,6 +4,8 @@ import type { SponsoredAccount } from './db/schema.js';
 import { createCloseAccountInstruction } from '@solana/spl-token';
 import chalk from 'chalk';
 
+import fs from 'fs';
+
 export class Reclaimer {
     connection: Connection;
     db: Database;
@@ -15,8 +17,8 @@ export class Reclaimer {
         this.operatorKeypair = operatorKeypair;
     }
 
-    async reclaimAccounts(): Promise<number> {
-        console.log(chalk.blue('Starting reclamation process...'));
+    async reclaimAccounts(dryRun: boolean = false): Promise<number> {
+        console.log(chalk.blue(`Starting reclamation process... ${dryRun ? '[DRY RUN]' : ''}`));
         const accounts = await this.db.all<SponsoredAccount[]>('SELECT * FROM sponsored_accounts WHERE status = ?', ['Reclaimable']);
 
         if (accounts.length === 0) {
@@ -29,25 +31,36 @@ export class Reclaimer {
         for (const account of accounts) {
             console.log(chalk.yellow(`Attempting to reclaim ${account.address} (${account.type})...`));
             try {
-                let txId: string;
-                if (account.type === 'wSOL' || account.type === 'ATA') {
-                    txId = await this.reclaimTokenAccount(account);
-                } else if (account.type === 'Seed') {
-                    txId = await this.reclaimSeedAccount(account);
+                let txId: string = 'DRY_RUN_TX_ID';
+
+                if (!dryRun) {
+                    if (account.type === 'wSOL' || account.type === 'ATA') {
+                        txId = await this.reclaimTokenAccount(account);
+                    } else if (account.type === 'Seed') {
+                        txId = await this.reclaimSeedAccount(account);
+                    } else {
+                        continue;
+                    }
+                    console.log(chalk.green(`Reclaim successful! Tx: ${txId}`));
                 } else {
-                    continue;
+                    console.log(chalk.magenta(`[DRY RUN] Would simulate reclaim for ${account.address}`));
                 }
 
-                console.log(chalk.green(`Reclaim successful! Tx: ${txId}`));
+                if (!dryRun) {
+                    // 1. Update Status
+                    await this.db.run('UPDATE sponsored_accounts SET status = ?, rent_amount = 0 WHERE address = ?', ['Reclaimed', account.address]);
 
-                // 1. Update Status
-                await this.db.run('UPDATE sponsored_accounts SET status = ?, rent_amount = 0 WHERE address = ?', ['Reclaimed', account.address]);
+                    // 2. Audit Log (DB)
+                    await this.db.run(
+                        'INSERT INTO reclamation_logs (account_address, amount_lamports, tx_signature, timestamp, reason) VALUES (?, ?, ?, ?, ?)',
+                        [account.address, account.rent_amount, txId, Date.now(), 'Automated Reclaim']
+                    );
+                }
 
-                // 2. Audit Log
-                await this.db.run(
-                    'INSERT INTO reclamation_logs (account_address, amount_lamports, tx_signature, timestamp, reason) VALUES (?, ?, ?, ?, ?)',
-                    [account.address, account.rent_amount, txId, Date.now(), 'Automated Reclaim']
-                );
+                // 3. Audit Log (File) - Always log dry runs too for visibility, or decide?
+                // Let's log Dry Runs as [DRY RUN]
+                const logMessage = `[${new Date().toISOString()}] ${dryRun ? '[DRY RUN] ' : ''}RECLAIMED | Address: ${account.address} | Amount: ${account.rent_amount} | Tx: ${txId}\n`;
+                fs.appendFileSync('audit.log', logMessage);
 
                 count++;
 

@@ -18,6 +18,8 @@ program
     .description('Kora Rent Reclaim Bot')
     .version('1.0.0');
 
+import bs58 from 'bs58';
+
 // Shared helpers
 async function getContext() {
     const rpcUrl = process.env.RPC_URL || 'https://api.devnet.solana.com';
@@ -27,29 +29,28 @@ async function getContext() {
     // Load Operator Keypair
     const secretKeyString = process.env.OPERATOR_KEYPAIR;
     if (!secretKeyString) {
-        // Fallback or error
-        // For CLI testing without keypair validation (e.g. analyze/monitor might not need secret key strictly? Monitor needs pubkey)
-        // But Monitor constructor takes string pubkey.
-        // We throw here for safety.
-        throw new Error('OPERATOR_KEYPAIR not found in env (expecting JSON array of secret key)');
+        throw new Error('OPERATOR_KEYPAIR not found in env');
     }
 
     let secretKey: Uint8Array;
     try {
-        const parsedContext = JSON.parse(secretKeyString);
-        if (Array.isArray(parsedContext)) {
-            secretKey = Uint8Array.from(parsedContext);
-        } else {
-            throw new Error('Not an array');
-        }
-    } catch (e) {
-        // Maybe it's a file path?
-        if (fs.existsSync(secretKeyString)) {
+        if (secretKeyString.startsWith('[')) {
+            const parsedContext = JSON.parse(secretKeyString);
+            if (Array.isArray(parsedContext)) {
+                secretKey = Uint8Array.from(parsedContext);
+            } else {
+                throw new Error('Not an array');
+            }
+        } else if (fs.existsSync(secretKeyString)) {
+            // Maybe it's a file path?
             const fileContent = fs.readFileSync(secretKeyString, 'utf-8');
             secretKey = Uint8Array.from(JSON.parse(fileContent));
         } else {
-            throw new Error('Invalid OPERATOR_KEYPAIR format');
+            // Assume Base58 string
+            secretKey = bs58.decode(secretKeyString);
         }
+    } catch (e) {
+        throw new Error('Invalid OPERATOR_KEYPAIR format. Must be JSON array, file path, or Base58 string.');
     }
 
     const operatorKeypair = Keypair.fromSecretKey(secretKey);
@@ -86,11 +87,12 @@ program.command('analyze')
 
 program.command('reclaim')
     .description('Reclaim rent from eligible accounts')
-    .action(async () => {
+    .option('-d, --dry-run', 'Simulate reclamation without executing')
+    .action(async (options) => {
         try {
             const { connection, db, operatorKeypair } = await getContext();
             const reclaimer = new Reclaimer(connection, db, operatorKeypair);
-            await reclaimer.reclaimAccounts();
+            await reclaimer.reclaimAccounts(options.dryRun);
         } catch (e: any) {
             console.error(chalk.red('Error:'), e.message);
             process.exit(1);

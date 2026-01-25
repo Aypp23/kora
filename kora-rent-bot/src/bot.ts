@@ -160,9 +160,10 @@ export class BotService {
     private setupScheduler() {
         console.log(chalk.magenta('⏰ Cron Scheduler initialized.'));
 
-        // 1. Hourly Monitoring & Alerting (0 * * * *)
-        cron.schedule('0 * * * *', async () => {
-            console.log(chalk.blue('Hourly Scan & Check...'));
+        // 1. Hourly Monitoring & Alerting (Default: 0 * * * *)
+        const cronMonitor = process.env.CRON_SCHEDULE_MONITOR || '0 * * * *';
+        cron.schedule(cronMonitor, async () => {
+            console.log(chalk.blue(`Running Scheduled Monitor (${cronMonitor})...`));
             try {
                 // Monitor
                 const monitor = new Monitor(this.connection, this.db, this.operator.publicKey.toBase58());
@@ -175,14 +176,15 @@ export class BotService {
                 // Alert Check
                 await this.checkRentThreshold();
             } catch (e: any) {
-                console.error('Hourly scan failed:', e);
+                console.error('Scheduled scan failed:', e);
             }
         });
 
-        // 2. Daily Reclamation (0 0 * * *)
-        cron.schedule('0 0 * * *', async () => {
-            console.log(chalk.magenta('⏰ Executing Daily Reclamation...'));
-            this.notify('⏰ *Daily Reclamation Started*');
+        // 2. Daily Reclamation (Default: 0 0 * * *)
+        const cronReclaim = process.env.CRON_SCHEDULE_RECLAIM || '0 0 * * *';
+        cron.schedule(cronReclaim, async () => {
+            console.log(chalk.magenta(`⏰ Executing Scheduled Reclamation (${cronReclaim})...`));
+            this.notify('⏰ *Reclamation Cycle Started*');
 
             try {
                 const reclaimer = new Reclaimer(this.connection, this.db, this.operator);

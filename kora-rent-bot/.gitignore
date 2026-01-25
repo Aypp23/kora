@@ -4,3 +4,4 @@ dist
 .DS_Store
 kora_bot.db
 coverage
+audit.log
