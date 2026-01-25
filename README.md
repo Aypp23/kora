@@ -337,30 +337,30 @@ The `analyze` process will automatically mark these as `WHITELISTED` in the data
 
 ```mermaid
 graph TD
-    RPC[Solana RPC]
-    Op[Operator Keypair]
+    RPC["Solana RPC"]
+    Op["Operator Keypair"]
     
-    subgraph Kora Bot Core
-        Mon[Monitor Service]
-        An[Analyzer Service]
-        Rec[Reclaimer Service]
-        DB[(SQLite DB)]
+    subgraph "Kora Bot Core"
+        Mon["Monitor Service"]
+        An["Analyzer Service"]
+        Rec["Reclaimer Service"]
+        DB[("SQLite DB")]
     end
     
     RPC -->|Fetch History| Mon
     Mon -->|New Accounts| DB
     
-    DB -->|Active Accounts| An
-    RPC -->|GetAccountInfo| An
-    An -->|Update Status (Active/Empty)| DB
+    DB -->|"Active Accounts"| An
+    RPC -->|"GetAccountInfo"| An
+    An -->|"Update Status (Active/Empty)"| DB
     
-    DB -->|Reclaimable Accounts| Rec
-    Rec -->|1. Safety Check| RPC
-    Rec -->|2. Sign Tx| Op
-    Rec -->|3. Submit Close| RPC
+    DB -->|"Reclaimable Accounts"| Rec
+    Rec -->|"1. Safety Check"| RPC
+    Rec -->|"2. Sign Tx"| Op
+    Rec -->|"3. Submit Close"| RPC
     
-    RPC -->|Rent Refund| Op
-    Rec -->|Log Event| DB
+    RPC -->|"Rent Refund"| Op
+    Rec -->|"Log Event"| DB
 ```
 
 **Components:**
